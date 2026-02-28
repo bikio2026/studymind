@@ -4,7 +4,7 @@ import RelevanceFilter from './RelevanceFilter'
 import DocumentOutline from './DocumentOutline'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 
-export default function StudyGuide({ structure, topics, onMarkStudied, onQuizScore }) {
+export default function StudyGuide({ structure, topics, documentId }) {
   const [activeTopic, setActiveTopic] = useState(null)
   const [filter, setFilter] = useState('all')
 
@@ -66,8 +66,7 @@ export default function StudyGuide({ structure, topics, onMarkStudied, onQuizSco
           <TopicCard
             key={currentTopic.id}
             topic={currentTopic}
-            onMarkStudied={onMarkStudied}
-            onQuizScore={onQuizScore}
+            documentId={documentId}
           />
         ) : filteredTopics.length === 0 && filter !== 'all' ? (
           <div className="text-center text-text-muted py-20">

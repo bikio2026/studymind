@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb } from 'lucide-react'
 import QuizSection from './QuizSection'
+import { useProgressStore } from '../stores/progressStore'
 
 const RELEVANCE = {
   core: { label: 'Concepto Central', color: 'text-core', bg: 'bg-core-bg', border: 'border-core/30' },
@@ -32,13 +33,18 @@ function CollapsibleSection({ title, icon: Icon, expanded, onToggle, children })
   )
 }
 
-export default function TopicCard({ topic, onMarkStudied, onQuizScore }) {
+export default function TopicCard({ topic, documentId }) {
   const [expandedSections, setExpandedSections] = useState({
     explanation: false,
     connections: false,
     quiz: false,
   })
 
+  const topicProgress = useProgressStore(s => s.progress[topic.id])
+  const markStudied = useProgressStore(s => s.markStudied)
+  const saveQuizScore = useProgressStore(s => s.saveQuizScore)
+
+  const isStudied = topicProgress?.studied || false
   const rel = RELEVANCE[topic.relevance] || RELEVANCE.supporting
 
   const toggle = (section) => {
@@ -54,7 +60,7 @@ export default function TopicCard({ topic, onMarkStudied, onQuizScore }) {
             <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${rel.color} ${rel.bg} border ${rel.border}`}>
               {rel.label}
             </span>
-            {topic.studied && (
+            {isStudied && (
               <span className="text-xs text-success flex items-center gap-1">
                 <CheckCircle className="w-3 h-3" /> Estudiado
               </span>
@@ -62,9 +68,9 @@ export default function TopicCard({ topic, onMarkStudied, onQuizScore }) {
           </div>
           <h2 className="text-xl font-bold">{topic.sectionTitle}</h2>
         </div>
-        {!topic.studied && (
+        {!isStudied && (
           <button
-            onClick={() => onMarkStudied(topic.id)}
+            onClick={() => markStudied(documentId, topic.id)}
             className="text-xs text-text-muted hover:text-success transition-colors px-3 py-1.5 rounded-lg hover:bg-success-bg border border-transparent hover:border-success/20"
           >
             Marcar estudiado
@@ -138,7 +144,7 @@ export default function TopicCard({ topic, onMarkStudied, onQuizScore }) {
         >
           <QuizSection
             questions={topic.quiz}
-            onComplete={(score) => onQuizScore(topic.id, score)}
+            onComplete={(score) => saveQuizScore(documentId, topic.id, score)}
           />
         </CollapsibleSection>
       )}

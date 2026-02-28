@@ -31,6 +31,69 @@ export function chunkText(text, maxTokens = 6000) {
   return chunks
 }
 
+// Normalize text for fuzzy matching: lowercase, strip accents, collapse whitespace, remove punctuation
+function normalize(text) {
+  return text
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip accents
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')  // punctuation -> space
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Find title position in fullText using fuzzy normalized matching
+function findTitleIndex(fullText, title) {
+  // 1. Exact match
+  let idx = fullText.indexOf(title)
+  if (idx !== -1) return idx
+
+  // 2. Case-insensitive match
+  const lowerFull = fullText.toLowerCase()
+  const lowerTitle = title.toLowerCase()
+  idx = lowerFull.indexOf(lowerTitle)
+  if (idx !== -1) return idx
+
+  // 3. Normalized match — search the normalized fullText for the normalized title
+  const normFull = normalize(fullText)
+  const normTitle = normalize(title)
+  const normIdx = normFull.indexOf(normTitle)
+  if (normIdx !== -1) {
+    // Map normalized index back to original: count non-stripped chars up to normIdx
+    let origIdx = 0
+    let normCount = 0
+    const fullNorm = normalize(fullText)
+    // Walk original text, tracking position in normalized version
+    for (let i = 0; i < fullText.length && normCount < normIdx; i++) {
+      const charNorm = normalize(fullText[i])
+      if (charNorm.length > 0) normCount += charNorm.length
+      origIdx = i + 1
+    }
+    return origIdx
+  }
+
+  // 4. Keyword match — extract significant words and find a line that contains most of them
+  const keywords = normTitle.split(' ').filter(w => w.length > 3)
+  if (keywords.length >= 2) {
+    const lines = fullText.split('\n')
+    let bestScore = 0
+    let bestLineStart = -1
+    let offset = 0
+    for (const line of lines) {
+      const normLine = normalize(line)
+      const matches = keywords.filter(kw => normLine.includes(kw)).length
+      const score = matches / keywords.length
+      if (score > bestScore && score >= 0.6) {
+        bestScore = score
+        bestLineStart = offset
+      }
+      offset += line.length + 1
+    }
+    if (bestLineStart !== -1) return bestLineStart
+  }
+
+  return -1
+}
+
 export function extractSectionText(fullText, sections, sectionId) {
   const section = sections.find(s => s.id === sectionId)
   if (!section) return ''
@@ -40,13 +103,16 @@ export function extractSectionText(fullText, sections, sectionId) {
     (s, i) => i > sectionIdx && s.level <= section.level
   )
 
-  const startIdx = fullText.indexOf(section.title)
+  const startIdx = findTitleIndex(fullText, section.title)
   if (startIdx === -1) return ''
 
   let endIdx = fullText.length
   if (nextSameOrHigherLevel) {
-    const nextIdx = fullText.indexOf(nextSameOrHigherLevel.title, startIdx + section.title.length)
-    if (nextIdx > -1) endIdx = nextIdx
+    const nextIdx = findTitleIndex(
+      fullText.slice(startIdx + section.title.length),
+      nextSameOrHigherLevel.title
+    )
+    if (nextIdx > -1) endIdx = startIdx + section.title.length + nextIdx
   }
 
   return fullText.slice(startIdx, endIdx).trim()
