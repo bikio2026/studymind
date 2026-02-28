@@ -13,10 +13,6 @@ dist-ssr
 *.local
 .env
 
-# Stockfish full build — too large for git (108MB), lite version committed directly
-public/stockfish-18-single.wasm
-public/stockfish-18-single.js
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -9,8 +9,8 @@ App web que toma un PDF, detecta su estructura, y genera una guía de estudio in
 - LLM multi-provider: Claude API (Haiku/Sonnet), Groq (Llama 3.3 70B)
 
 ## Puertos
-- **3060**: Frontend (Vite)
-- **3061**: API proxy (Node.js HTTP)
+- **3057**: Frontend (Vite)
+- **3058**: API proxy (Node.js HTTP)
 
 ## Comandos
 ```bash
