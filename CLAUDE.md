@@ -1,10 +1,14 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
+**Version actual**: v0.2 (Fase 1)
+
 ## Qué es
-App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación.
+App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia local con IndexedDB y biblioteca de documentos.
 
 ## Stack
 - Vite 7 + React 19 + JavaScript + Tailwind v4 (CSS-based)
+- Zustand 5 (estado global)
+- IndexedDB (persistencia local)
 - pdfjs-dist (parseo PDF client-side)
 - LLM multi-provider: Claude API (Haiku/Sonnet), Groq (Llama 3.3 70B)
 
@@ -23,35 +27,40 @@ npm run build    # Build producción
 ## Arquitectura
 ```
 src/
+  stores/
+    documentStore.js            — Zustand: biblioteca de documentos
+    studyStore.js               — Zustand: estructura + topics generados
+    progressStore.js            — Zustand: progreso del estudiante
   hooks/
-    usePDFParser.js           — Extracción de texto de PDF
-    useLLMStream.js           — Streaming SSE multi-provider (Claude/Groq)
-    useDocumentAnalysis.js    — Detección de estructura via LLM
-    useStudyGuide.js          — Estado principal (idle->parsing->analyzing->generating->ready)
-    useProgress.js            — Persistencia de progreso (localStorage)
+    usePDFParser.js             — Extracción de texto de PDF
+    useLLMStream.js             — Streaming SSE multi-provider (Claude/Groq)
+    useDocumentAnalysis.js      — Detección de estructura via LLM
+    useStudyGuide.js            — Generación de guías (usa studyStore)
   lib/
-    pdfExtractor.js           — Wrapper de pdfjs-dist
-    promptBuilder.js          — Prompts para estructura y guía de estudio
-    chunkProcessor.js         — Split de textos largos + extracción por sección
-    textUtils.js              — Utilidades de texto
+    db.js                       — Wrapper IndexedDB (documents, structures, topics, progress)
+    pdfExtractor.js             — Wrapper de pdfjs-dist
+    promptBuilder.js            — Prompts para estructura y guía de estudio
+    chunkProcessor.js           — Split de textos largos + fuzzy matching por sección
+    textUtils.js                — Utilidades de texto
   components/
-    PDFUploader.jsx           — Drag & drop de PDF
-    ProcessingStatus.jsx      — Progreso del pipeline (3 fases)
-    LLMSelector.jsx           — Selector de provider/modelo
-    DocumentOutline.jsx       — Sidebar con estructura del documento
-    StudyGuide.jsx            — Vista principal de la guía
-    TopicCard.jsx             — Card por tema (resumen, conceptos, explicación, quiz)
-    QuizSection.jsx           — Autoevaluación interactiva
-    RelevanceFilter.jsx       — Filtro por capa de relevancia
-  App.jsx                     — Orquestador principal
-  main.jsx                    — Entry point React
-  index.css                   — Tailwind v4 theme
-server/index.js               — API proxy local
+    Library.jsx                 — Vista biblioteca (pantalla inicial)
+    PDFUploader.jsx             — Drag & drop de PDF
+    ProcessingStatus.jsx        — Progreso del pipeline (3 fases)
+    LLMSelector.jsx             — Selector de provider/modelo
+    DocumentOutline.jsx         — Sidebar con estructura del documento
+    StudyGuide.jsx              — Vista principal de la guía
+    TopicCard.jsx               — Card por tema (resumen, conceptos, explicación, quiz)
+    QuizSection.jsx             — Autoevaluación interactiva
+    RelevanceFilter.jsx         — Filtro por capa de relevancia
+  App.jsx                       — Routing biblioteca vs estudio + pipeline
+  main.jsx                      — Entry point React
+  index.css                     — Tailwind v4 theme
+server/index.js                 — API proxy local
 api/
-  _shared.js                  — Config, system prompts, CORS
-  analyze-claude.js           — Endpoint Claude (Vercel)
-  analyze-groq.js             — Endpoint Groq (Vercel)
-  health.js                   — Health check proveedores
+  _shared.js                    — Config, system prompts, CORS
+  analyze-claude.js             — Endpoint Claude (Vercel)
+  analyze-groq.js               — Endpoint Groq (Vercel)
+  health.js                     — Health check proveedores
 ```
 
 ## Pipeline de procesamiento
@@ -64,6 +73,15 @@ api/
    - Explicación expandida (mejorada vs. original)
    - Conexiones entre temas
    - Preguntas de autoevaluación
+4. **Persistencia** — Cada topic se guarda en IDB a medida que se genera
+
+## Persistencia (IndexedDB)
+| Store | Key | Contenido |
+|-------|-----|-----------|
+| documents | id (UUID) | fileName, fileSize, totalPages, fullText, processedAt, status |
+| structures | documentId | title, author, sections[] |
+| topics | documentId_sectionId | sectionTitle, level, relevance, summary, keyConcepts, etc. |
+| progress | documentId_topicId | studied, quizScores[], resets[] |
 
 ## Capas de relevancia
 | Capa | Color | Significado |
@@ -76,19 +94,40 @@ api/
 - **Claude**: Requiere `ANTHROPIC_API_KEY` en .env. Modelos: Haiku 4.5 (rápido), Sonnet 4 (mejor calidad).
 - **Groq**: Requiere `GROQ_API_KEY` en .env. Modelo: Llama 3.3 70B.
 
-## System Prompts
-- **structure**: Detección de estructura del documento (respuesta JSON)
-- **studyGuide**: Generación de guía por sección (respuesta JSON)
-- **summary**: Síntesis de texto (respuesta libre)
-
-## localStorage Keys
-| Key | Uso |
-|-----|-----|
-| `studymind-llm-provider` | Provider LLM seleccionado |
-| `studymind-llm-model` | Modelo LLM seleccionado |
-| `studymind-progress` | Progreso de estudio por documento |
-
 ## Deploy
-- Vercel (auto-deploy)
-- Serverless Functions en `api/`
+- **URL**: https://studymind-eight.vercel.app
+- Vercel con Serverless Functions en `api/`
 - PDF parsing es 100% client-side (no sube archivos al server)
+- Requiere environment variables en Vercel para API keys
+
+## Roadmap
+Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md`
+
+| Fase | Descripción | Estado |
+|------|-------------|--------|
+| 1 | Persistencia y Biblioteca | ✅ Completada |
+| 2 | Chat Conversacional (tutor socrático) | Próxima |
+| 3 | Referencias cruzadas y al texto fuente | Pendiente |
+| 4 | Niveles de profundidad y progreso avanzado | Pendiente |
+| 5 | Rutas de aprendizaje | Pendiente |
+| 6 | Roles y multi-usuario | Pendiente |
+
+---
+
+## Changelog
+
+### v0.2 — Fase 1: Persistencia y Biblioteca (2026-02-28)
+- IndexedDB para persistir documentos, estructuras, topics y progreso
+- Zustand stores: documentStore, studyStore, progressStore
+- Vista Biblioteca como pantalla inicial con grilla de documentos
+- Migración de App.jsx de hooks/props a Zustand global
+- Fuzzy matching de 4 niveles para extracción de texto por sección
+- Regeneración individual por sección
+- Deploy a Vercel: https://studymind-eight.vercel.app
+
+### v0.1 — MVP (2026-02-27)
+- Parseo PDF client-side con pdfjs-dist
+- Detección de estructura via LLM
+- Generación de guías con capas de relevancia
+- Multi-provider: Claude (Haiku/Sonnet) + Groq (Llama 3.3 70B)
+- Streaming SSE
