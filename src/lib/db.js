@@ -147,6 +147,13 @@ export const db = {
     return put(STORES.documents, doc)
   },
 
+  // Find documents with matching content hash
+  async findByContentHash(hash) {
+    if (!hash) return []
+    const all = await getAll(STORES.documents)
+    return all.filter(d => d.contentHash === hash)
+  },
+
   async deleteDocument(id) {
     // Cascade: delete structure, topics, progress
     await deleteByKey(STORES.documents, id)

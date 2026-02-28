@@ -82,6 +82,7 @@ export function useStudyGuide() {
           const guide = JSON.parse(jsonMatch[0])
           const topic = {
             id: section.id,
+            sectionId: section.id,
             sectionTitle: section.title,
             level: section.level,
             relevance: guide.relevance || 'supporting',
@@ -153,6 +154,7 @@ export function useStudyGuide() {
         const guide = JSON.parse(jsonMatch[0])
         const topic = {
           id: section.id,
+          sectionId: section.id,
           sectionTitle: section.title,
           level: section.level,
           relevance: guide.relevance || 'supporting',

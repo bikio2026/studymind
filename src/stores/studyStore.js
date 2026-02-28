@@ -20,11 +20,14 @@ export const useStudyStore = create((set, get) => ({
     const topics = await db.getTopics(documentId)
 
     if (structure && topics.length > 0) {
-      // Clean IDB fields from topics
-      const cleanTopics = topics.map(({ id: _idbId, documentId: _docId, ...rest }) => ({
-        ...rest,
-        id: rest.sectionId ?? rest.id,
-      }))
+      // Restore topic IDs from IDB composite keys
+      // IDB stores: { id: "docId_sectionId", documentId, sectionId?, ...data }
+      // We need to recover the original sectionId as the topic's `id`
+      const cleanTopics = topics.map(({ id: idbId, documentId: _docId, ...rest }) => {
+        // Prefer explicit sectionId (new format), fallback to extracting from composite key
+        const sectionId = rest.sectionId || idbId.replace(`${documentId}_`, '')
+        return { ...rest, id: sectionId, sectionId }
+      })
       set({ structure, topics: cleanTopics, phase: 'ready', error: null })
       return true // loaded from cache
     }

@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react'
 import { useDocumentStore } from '../stores/documentStore'
+import { getModelName } from '../lib/models'
 import {
   FileText, Upload, Trash2, Clock, BookOpen,
-  ChevronRight, AlertCircle, Loader2, Files
+  ChevronRight, AlertCircle, Loader2, Files, Cpu
 } from 'lucide-react'
 
 function formatDate(ts) {
@@ -60,6 +61,14 @@ function DocumentCard({ doc, onOpen, onDelete }) {
         <h3 className="text-sm font-semibold text-text truncate mb-1 group-hover:text-accent transition-colors">
           {doc.fileName}
         </h3>
+
+        {/* Model badge */}
+        {doc.model && (
+          <div className="flex items-center gap-1.5 text-[10px] text-accent/80 mb-1.5">
+            <Cpu className="w-3 h-3" />
+            <span>{getModelName(doc.model)}</span>
+          </div>
+        )}
 
         {/* Meta row */}
         <div className="flex items-center gap-3 text-[11px] text-text-muted">

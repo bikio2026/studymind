@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { usePDFParser } from './hooks/usePDFParser'
 import { useDocumentAnalysis } from './hooks/useDocumentAnalysis'
 import { useStudyGuide } from './hooks/useStudyGuide'
@@ -6,12 +6,22 @@ import { useLLMStream } from './hooks/useLLMStream'
 import { useDocumentStore } from './stores/documentStore'
 import { useStudyStore } from './stores/studyStore'
 import { useProgressStore } from './stores/progressStore'
+import { db } from './lib/db'
+import { getModelName } from './lib/models'
 import PDFUploader from './components/PDFUploader'
 import ProcessingStatus from './components/ProcessingStatus'
 import StudyGuide from './components/StudyGuide'
 import Library from './components/Library'
 import LLMSelector from './components/LLMSelector'
-import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft } from 'lucide-react'
+import DuplicateDialog from './components/DuplicateDialog'
+import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu } from 'lucide-react'
+
+async function computeContentHash(fullText, totalPages) {
+  const input = fullText.slice(0, 10000) + String(totalPages)
+  const data = new TextEncoder().encode(input)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
 
 export default function App() {
   const { document: parsedDoc, parsing, progress: parseProgress, error: parseError, parseFile, reset: resetParser } = usePDFParser()
@@ -21,6 +31,9 @@ export default function App() {
     error: guideError, generateGuides, reset: resetGuide
   } = useStudyGuide()
   const { status, checkHealth } = useLLMStream()
+
+  // Duplicate dialog state
+  const [duplicateInfo, setDuplicateInfo] = useState(null) // { existingDocs, parsedDoc, contentHash }
 
   // Zustand stores
   const activeDocumentId = useDocumentStore(s => s.activeDocumentId)
@@ -65,17 +78,8 @@ export default function App() {
     loadCached()
   }, [activeDocumentId, loadFromDB, loadProgress])
 
-  // Full processing pipeline for new PDF
-  const handleFileSelect = useCallback(async (file) => {
-    setPhase('parsing')
-
-    const doc = await parseFile(file)
-    if (!doc) {
-      setPhase('idle')
-      return
-    }
-
-    // Generate document ID and persist
+  // Process a parsed PDF document (called directly or after dedup dialog)
+  const processDocument = useCallback(async (doc, contentHash) => {
     const documentId = crypto.randomUUID()
     const docRecord = {
       id: documentId,
@@ -85,6 +89,9 @@ export default function App() {
       fullText: doc.fullText,
       processedAt: Date.now(),
       status: 'processing',
+      contentHash,
+      provider: llmConfig.provider,
+      model: llmConfig.model,
     }
     await saveDocument(docRecord)
     setActiveDocument(documentId)
@@ -96,16 +103,56 @@ export default function App() {
       return
     }
 
-    // Persist structure
     await saveStructure(documentId, struct)
-
-    // Generate guides (now with documentId for IDB persistence)
     await generateGuides(documentId, doc, struct, llmConfig)
 
-    // Mark document as ready
     const { updateDocumentStatus } = useDocumentStore.getState()
     await updateDocumentStatus(documentId, 'ready')
-  }, [parseFile, analyzeStructure, generateGuides, llmConfig, setPhase, saveDocument, setActiveDocument, saveStructure])
+  }, [analyzeStructure, generateGuides, llmConfig, setPhase, saveDocument, setActiveDocument, saveStructure])
+
+  // Full processing pipeline for new PDF — with deduplication check
+  const handleFileSelect = useCallback(async (file) => {
+    setPhase('parsing')
+
+    const doc = await parseFile(file)
+    if (!doc) {
+      setPhase('idle')
+      return
+    }
+
+    // Compute content hash for deduplication
+    const contentHash = await computeContentHash(doc.fullText, doc.totalPages)
+    const existingDocs = await db.findByContentHash(contentHash)
+
+    if (existingDocs.length > 0) {
+      // Show duplicate dialog — pause processing
+      setPhase('idle')
+      setDuplicateInfo({ existingDocs, parsedDoc: doc, contentHash })
+      return
+    }
+
+    // No duplicates — proceed
+    await processDocument(doc, contentHash)
+  }, [parseFile, setPhase, processDocument])
+
+  // Duplicate dialog handlers
+  const handleDuplicateProceed = useCallback(async () => {
+    if (!duplicateInfo) return
+    const { parsedDoc: doc, contentHash } = duplicateInfo
+    setDuplicateInfo(null)
+    setPhase('parsing') // visual feedback while starting
+    await processDocument(doc, contentHash)
+  }, [duplicateInfo, processDocument, setPhase])
+
+  const handleDuplicateOpen = useCallback((docId) => {
+    setDuplicateInfo(null)
+    setActiveDocument(docId)
+  }, [setActiveDocument])
+
+  const handleDuplicateCancel = useCallback(() => {
+    setDuplicateInfo(null)
+    resetParser()
+  }, [resetParser])
 
   const handleBackToLibrary = () => {
     resetParser()
@@ -133,6 +180,17 @@ export default function App() {
         </header>
 
         <Library onNewDocument={handleFileSelect} />
+
+        {/* Duplicate dialog */}
+        {duplicateInfo && (
+          <DuplicateDialog
+            existingDocs={duplicateInfo.existingDocs}
+            currentModel={llmConfig.model}
+            onProceed={handleDuplicateProceed}
+            onOpen={handleDuplicateOpen}
+            onCancel={handleDuplicateCancel}
+          />
+        )}
       </div>
     )
   }
@@ -163,7 +221,18 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <LLMSelector status={status} onProviderChange={setLLMConfig} />
+          {currentPhase === 'ready' && activeDoc?.model ? (
+            <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1 rounded-lg flex items-center gap-1.5 border border-surface-light/30">
+              <Cpu className="w-3 h-3" />
+              {getModelName(activeDoc.model)}
+              <span className="text-text-muted/50">·</span>
+              <span className="text-text-muted/70">
+                {new Date(activeDoc.processedAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
+              </span>
+            </span>
+          ) : (
+            <LLMSelector status={status} onProviderChange={setLLMConfig} />
+          )}
           {currentPhase !== 'idle' && currentPhase !== 'ready' && (
             <button
               onClick={handleBackToLibrary}
