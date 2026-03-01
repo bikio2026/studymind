@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText, Layers } from 'lucide-react'
 import QuizSection from './QuizSection'
 import ChatSection from './ChatSection'
 import ConnectionLink from './ConnectionLink'
 import SourceTextViewer from './SourceTextViewer'
 import { enrichConnections } from '../lib/connectionParser'
 import { useProgressStore } from '../stores/progressStore'
+import { getMasteryLevel, MASTERY_LEVELS, DEPTH_LEVELS } from '../lib/proficiency'
 
 const RELEVANCE = {
   core: { label: 'Concepto Central', color: 'text-core', bg: 'bg-core-bg', border: 'border-core/30' },
@@ -52,6 +53,23 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
 
   const isStudied = topicProgress?.studied || false
   const rel = RELEVANCE[topic.relevance] || RELEVANCE.supporting
+  const mastery = getMasteryLevel(topicProgress)
+  const masteryInfo = MASTERY_LEVELS[mastery]
+
+  // Depth level: stored in localStorage per topic
+  const depthKey = `studymind-depth-${topic.id}`
+  const [depth, setDepth] = useState(() => {
+    if (typeof localStorage === 'undefined') return 'completo'
+    return localStorage.getItem(depthKey) || 'completo'
+  })
+  const changeDepth = (level) => {
+    setDepth(level)
+    localStorage.setItem(depthKey, level)
+  }
+
+  const showKeyConcepts = depth !== 'resumen'
+  const showExplanation = depth === 'completo'
+  const showConnections = depth !== 'resumen'
 
   // Enrich connections with navigation data
   const enrichedConnections = useMemo(
@@ -72,9 +90,9 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
             <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${rel.color} ${rel.bg} border ${rel.border}`}>
               {rel.label}
             </span>
-            {isStudied && (
-              <span className="text-xs text-success flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" /> Estudiado
+            {mastery !== 'sin-empezar' && (
+              <span className={`text-xs ${masteryInfo.color} flex items-center gap-1`}>
+                <CheckCircle className="w-3 h-3" /> {masteryInfo.label}
               </span>
             )}
           </div>
@@ -105,6 +123,25 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
         </div>
       )}
 
+      {/* Depth Level Selector */}
+      <div className="mb-4 flex items-center gap-1.5">
+        <Layers className="w-3.5 h-3.5 text-text-muted mr-1" />
+        {Object.entries(DEPTH_LEVELS).map(([key, level]) => (
+          <button
+            key={key}
+            onClick={() => changeDepth(key)}
+            className={`text-[11px] px-2.5 py-1 rounded-full transition-colors border ${
+              depth === key
+                ? 'bg-accent/15 text-accent border-accent/30 font-medium'
+                : 'text-text-muted hover:text-text-dim border-transparent hover:border-surface-light'
+            }`}
+            title={level.description}
+          >
+            {level.label}
+          </button>
+        ))}
+      </div>
+
       {/* Summary */}
       <div className="mb-4">
         <p className="text-text leading-relaxed text-[15px]">{topic.summary}</p>
@@ -126,8 +163,8 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
         </CollapsibleSection>
       )}
 
-      {/* Key Concepts */}
-      {topic.keyConcepts?.length > 0 && (
+      {/* Key Concepts (hidden in resumen mode) */}
+      {showKeyConcepts && topic.keyConcepts?.length > 0 && (
         <div className="mb-4">
           <h3 className="text-sm font-semibold text-text-dim mb-2 flex items-center gap-2">
             <Lightbulb className="w-4 h-4" />
@@ -146,20 +183,22 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
         </div>
       )}
 
-      {/* Expandable: Explanation */}
-      <CollapsibleSection
-        title="Explicación Expandida"
-        icon={BookOpen}
-        expanded={expandedSections.explanation}
-        onToggle={() => toggle('explanation')}
-      >
-        <div className="text-text-dim leading-relaxed whitespace-pre-line text-sm">
-          {topic.expandedExplanation}
-        </div>
-      </CollapsibleSection>
+      {/* Expandable: Explanation (only in completo mode) */}
+      {showExplanation && (
+        <CollapsibleSection
+          title="Explicación Expandida"
+          icon={BookOpen}
+          expanded={expandedSections.explanation}
+          onToggle={() => toggle('explanation')}
+        >
+          <div className="text-text-dim leading-relaxed whitespace-pre-line text-sm">
+            {topic.expandedExplanation}
+          </div>
+        </CollapsibleSection>
+      )}
 
-      {/* Expandable: Connections */}
-      {enrichedConnections.length > 0 && (
+      {/* Expandable: Connections (hidden in resumen mode) */}
+      {showConnections && enrichedConnections.length > 0 && (
         <CollapsibleSection
           title="Conexiones con otros temas"
           icon={Link2}

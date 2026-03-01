@@ -1,6 +1,6 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
-**Version actual**: v0.4 (Fase 3)
+**Version actual**: v0.5 (Fase 4)
 
 ## Qué es
 App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia local con IndexedDB y biblioteca de documentos.
@@ -112,13 +112,23 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 | 1 | Persistencia y Biblioteca | ✅ Completada |
 | 2 | Chat Conversacional (tutor socrático) | ✅ Completada |
 | 3 | Referencias cruzadas y al texto fuente | ✅ Completada |
-| 4 | Niveles de profundidad y progreso avanzado | Pendiente |
+| 4 | Niveles de profundidad y progreso avanzado | ✅ Completada |
 | 5 | Rutas de aprendizaje | Pendiente |
 | 6 | Roles y multi-usuario | Pendiente |
 
 ---
 
 ## Changelog
+
+### v0.5 — Fase 4: Niveles de Profundidad y Progreso Avanzado (2026-03-01)
+- Selector de profundidad por tema: Resumen / Intermedio / Completo (oculta/muestra contenido progresivamente)
+- Sistema de mastery: 5 niveles (Sin empezar → Visto → Aprendiendo → Dominado → Experto) basado en quiz scores
+- Cálculo de proficiencia ponderado (últimos scores pesan más)
+- Mastery rings en DocumentOutline (anillos SVG coloreados por nivel)
+- Barra de progreso stacked por nivel de mastery en sidebar
+- Dashboard de progreso colapsable con stats: % dominio, proficiencia promedio, intentos de quiz
+- Breakdown visual de mastery por tema con barras horizontales
+- Proficiency helper (`src/lib/proficiency.js`): cálculos centralizados, constantes, stats documento
 
 ### v0.4 — Fase 3: Referencias Cruzadas y Texto Fuente (2026-03-01)
 - Conexiones clickeables: parseo de nombres de sección desde strings de conexión + fuzzy matching

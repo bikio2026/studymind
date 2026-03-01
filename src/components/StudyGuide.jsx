@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react'
 import TopicCard from './TopicCard'
 import RelevanceFilter from './RelevanceFilter'
 import DocumentOutline from './DocumentOutline'
-import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2 } from 'lucide-react'
+import ProgressDashboard from './ProgressDashboard'
+import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3 } from 'lucide-react'
 
 export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming }) {
   const [activeTopic, setActiveTopic] = useState(null)
   const [filter, setFilter] = useState('all')
+  const [showDashboard, setShowDashboard] = useState(false)
   const provider = typeof localStorage !== 'undefined'
     ? (localStorage.getItem('studymind-llm-provider') || 'claude')
     : 'claude'
@@ -75,9 +77,29 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
           </div>
         )}
 
+        {/* Progress Dashboard (collapsible) */}
+        {showDashboard && topics.length > 0 && (
+          <ProgressDashboard topics={topics} />
+        )}
+
         {/* Toolbar */}
         <div className="flex items-center justify-between mb-4 sticky top-0 bg-surface/95 backdrop-blur-sm py-3 z-10 -mt-1">
-          <RelevanceFilter active={filter} onChange={setFilter} />
+          <div className="flex items-center gap-2">
+            <RelevanceFilter active={filter} onChange={setFilter} />
+            {topics.length > 0 && (
+              <button
+                onClick={() => setShowDashboard(v => !v)}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  showDashboard
+                    ? 'bg-accent/15 text-accent'
+                    : 'hover:bg-surface-alt text-text-muted hover:text-text'
+                }`}
+                title="Dashboard de progreso"
+              >
+                <BarChart3 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => prevTopic && setActiveTopic(prevTopic.id)}
