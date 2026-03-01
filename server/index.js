@@ -210,6 +210,9 @@ const server = http.createServer(async (req, res) => {
         return
       }
 
+      console.log(`[Groq] Request: model=${model}, promptVersion=${promptVersion}, maxTokens=${maxTokens}, promptLength=${prompt.length}`)
+      console.log(`[Groq] API Key: ${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`)
+
       const groqRes = await fetch(GROQ_API_URL, {
         method: 'POST',
         headers: {
@@ -227,8 +230,12 @@ const server = http.createServer(async (req, res) => {
         }),
       })
 
+      console.log(`[Groq] Response status: ${groqRes.status}`)
+      console.log(`[Groq] Response headers: content-type=${groqRes.headers.get('content-type')}, x-groq-id=${groqRes.headers.get('x-groq-id') || 'n/a'}`)
+
       if (!groqRes.ok) {
         const errText = await groqRes.text()
+        console.error(`[Groq] Error response body: ${errText.slice(0, 500)}`)
         res.writeHead(groqRes.status, { 'Content-Type': 'application/json' })
         let detail = ''
         try { detail = JSON.parse(errText).error?.message || errText.slice(0, 200) } catch { detail = errText.slice(0, 200) }
@@ -241,6 +248,8 @@ const server = http.createServer(async (req, res) => {
       const decoder = new TextDecoder()
       let buffer = ''
       let doneSent = false
+      let tokenCount = 0
+      let totalContentLength = 0
 
       while (true) {
         const { done, value } = await reader.read()
@@ -265,11 +274,23 @@ const server = http.createServer(async (req, res) => {
             const json = JSON.parse(data)
             const content = json.choices?.[0]?.delta?.content
             if (content) {
+              tokenCount++
+              totalContentLength += content.length
+              if (tokenCount <= 3) {
+                console.log(`[Groq] Token #${tokenCount}: "${content.slice(0, 80)}"`)
+              }
               res.write(`data: ${JSON.stringify({ token: content })}\n\n`)
+            }
+            // Log finish_reason if present
+            const finishReason = json.choices?.[0]?.finish_reason
+            if (finishReason) {
+              console.log(`[Groq] finish_reason: ${finishReason}`)
             }
           } catch { /* skip malformed */ }
         }
       }
+
+      console.log(`[Groq] Stream complete. Total tokens: ${tokenCount}, content chars: ${totalContentLength}, doneSent: ${doneSent}`)
 
       // Only send done if Groq didn't send [DONE] signal
       if (!doneSent) {
@@ -277,7 +298,7 @@ const server = http.createServer(async (req, res) => {
       }
       res.end()
     } catch (err) {
-      console.error('Groq error:', err.message)
+      console.error('[Groq] Error:', err.message, err.stack)
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ error: err.message }))

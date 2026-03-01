@@ -14,6 +14,7 @@ import StudyGuide from './components/StudyGuide'
 import Library from './components/Library'
 import LLMSelector from './components/LLMSelector'
 import DuplicateDialog from './components/DuplicateDialog'
+import PageRangeDialog from './components/PageRangeDialog'
 import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu } from 'lucide-react'
 
 async function computeContentHash(fullText, totalPages) {
@@ -32,8 +33,9 @@ export default function App() {
   } = useStudyGuide()
   const { status, checkHealth } = useLLMStream()
 
-  // Duplicate dialog state
+  // Dialog states
   const [duplicateInfo, setDuplicateInfo] = useState(null) // { existingDocs, parsedDoc, contentHash }
+  const [pageRangeInfo, setPageRangeInfo] = useState(null) // { parsedDoc, contentHash }
 
   // Zustand stores
   const activeDocumentId = useDocumentStore(s => s.activeDocumentId)
@@ -78,7 +80,7 @@ export default function App() {
     loadCached()
   }, [activeDocumentId, loadFromDB, loadProgress])
 
-  // Process a parsed PDF document (called directly or after dedup dialog)
+  // Process a parsed PDF document (called after page range selection)
   const processDocument = useCallback(async (doc, contentHash) => {
     const documentId = crypto.randomUUID()
     const docRecord = {
@@ -92,6 +94,11 @@ export default function App() {
       contentHash,
       provider: llmConfig.provider,
       model: llmConfig.model,
+      // Page range metadata (if partial processing)
+      ...(doc.pageRange && {
+        pageRange: doc.pageRange,
+        originalTotalPages: doc.originalTotalPages,
+      }),
     }
     await saveDocument(docRecord)
     setActiveDocument(documentId)
@@ -117,6 +124,12 @@ export default function App() {
     await updateDocumentStatus(documentId, 'ready')
   }, [analyzeStructure, generateGuides, llmConfig, setPhase, saveDocument, setActiveDocument, saveStructure])
 
+  // Show page range dialog for a parsed doc
+  const showPageRangeDialog = useCallback((doc, contentHash) => {
+    setPhase('idle')
+    setPageRangeInfo({ parsedDoc: doc, contentHash })
+  }, [setPhase])
+
   // Full processing pipeline for new PDF — with deduplication check
   const handleFileSelect = useCallback(async (file) => {
     setPhase('parsing')
@@ -138,18 +151,18 @@ export default function App() {
       return
     }
 
-    // No duplicates — proceed
-    await processDocument(doc, contentHash)
-  }, [parseFile, setPhase, processDocument])
+    // No duplicates — show page range dialog
+    showPageRangeDialog(doc, contentHash)
+  }, [parseFile, setPhase, showPageRangeDialog])
 
   // Duplicate dialog handlers
-  const handleDuplicateProceed = useCallback(async () => {
+  const handleDuplicateProceed = useCallback(() => {
     if (!duplicateInfo) return
     const { parsedDoc: doc, contentHash } = duplicateInfo
     setDuplicateInfo(null)
-    setPhase('parsing') // visual feedback while starting
-    await processDocument(doc, contentHash)
-  }, [duplicateInfo, processDocument, setPhase])
+    // After dedup proceed, show page range dialog
+    showPageRangeDialog(doc, contentHash)
+  }, [duplicateInfo, showPageRangeDialog])
 
   const handleDuplicateOpen = useCallback((docId) => {
     setDuplicateInfo(null)
@@ -158,6 +171,36 @@ export default function App() {
 
   const handleDuplicateCancel = useCallback(() => {
     setDuplicateInfo(null)
+    resetParser()
+  }, [resetParser])
+
+  // Page range dialog handlers
+  const handlePageRangeConfirm = useCallback(async (startPage, endPage) => {
+    if (!pageRangeInfo) return
+    const { parsedDoc: doc, contentHash } = pageRangeInfo
+    setPageRangeInfo(null)
+
+    const isFullRange = startPage === 1 && endPage === doc.totalPages
+
+    // Filter pages to selected range
+    const filteredPages = doc.pages.slice(startPage - 1, endPage)
+    const filteredDoc = {
+      ...doc,
+      pages: filteredPages,
+      fullText: filteredPages.map(p => p.text).join('\n\n'),
+      totalPages: filteredPages.length,
+      ...(isFullRange ? {} : {
+        originalTotalPages: doc.totalPages,
+        pageRange: { start: startPage, end: endPage },
+      }),
+    }
+
+    setPhase('parsing')
+    await processDocument(filteredDoc, contentHash)
+  }, [pageRangeInfo, processDocument, setPhase])
+
+  const handlePageRangeCancel = useCallback(() => {
+    setPageRangeInfo(null)
     resetParser()
   }, [resetParser])
 
@@ -198,6 +241,16 @@ export default function App() {
             onCancel={handleDuplicateCancel}
           />
         )}
+
+        {/* Page range dialog */}
+        {pageRangeInfo && (
+          <PageRangeDialog
+            fileName={pageRangeInfo.parsedDoc.fileName}
+            totalPages={pageRangeInfo.parsedDoc.totalPages}
+            onConfirm={handlePageRangeConfirm}
+            onCancel={handlePageRangeCancel}
+          />
+        )}
       </div>
     )
   }
@@ -223,7 +276,9 @@ export default function App() {
             <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1 rounded-lg flex items-center gap-1.5 ml-2">
               <FileText className="w-3 h-3" />
               {activeDoc.displayName || activeDoc.fileName}
-              <span className="text-text-muted/60">({activeDoc.totalPages} pág.)</span>
+              <span className="text-text-muted/60">
+                ({activeDoc.totalPages} pág.{activeDoc.originalTotalPages ? ` de ${activeDoc.originalTotalPages}` : ''})
+              </span>
             </span>
           )}
         </div>

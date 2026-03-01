@@ -117,7 +117,7 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
           {doc.totalPages && (
             <span className="flex items-center gap-1">
               <Files className="w-3 h-3" />
-              {doc.totalPages} pág.
+              {doc.totalPages} pág.{doc.originalTotalPages ? ` / ${doc.originalTotalPages}` : ''}
             </span>
           )}
           <span>{formatSize(doc.fileSize)}</span>

@@ -19,6 +19,7 @@ REGLAS:
 - Si podés inferir las páginas de inicio y fin de cada sección (del índice o del texto), incluí "pageStart" y "pageEnd". Si no podés determinarlas, omití esos campos.
 - IMPORTANTE: Solo incluí secciones cuyo CONTENIDO esté PRESENTE en el texto proporcionado. Si el índice menciona capítulos o secciones que NO aparecen en el texto extraído, NO los incluyas. No inventes secciones.
 - NO incluyas secciones estructurales sin contenido propio como: índice, tabla de contenidos, bibliografía, glosario, agradecimientos, apéndices.
+- GRANULARIDAD: Detectá capítulos y secciones individuales, no solo las partes o divisiones principales del libro. Si el libro tiene "Parte I" que contiene capítulos 1, 2 y 3, incluí TANTO la parte como los capítulos individuales. Objetivo: entre 8 y 25 secciones de nivel 1-2 para un libro típico. Si detectás menos de 6, revisá si hay subdivisiones internas que debas incluir.
 - El JSON debe ser válido y parseable
 
 TEXTO:
