@@ -240,6 +240,7 @@ const server = http.createServer(async (req, res) => {
       const reader = groqRes.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let doneSent = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -253,7 +254,10 @@ const server = http.createServer(async (req, res) => {
           if (!line.startsWith('data: ')) continue
           const data = line.slice(6).trim()
           if (data === '[DONE]') {
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+            if (!doneSent) {
+              doneSent = true
+              res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+            }
             continue
           }
 
@@ -267,7 +271,10 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+      // Only send done if Groq didn't send [DONE] signal
+      if (!doneSent) {
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+      }
       res.end()
     } catch (err) {
       console.error('Groq error:', err.message)

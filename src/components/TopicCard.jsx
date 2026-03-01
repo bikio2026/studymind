@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle } from 'lucide-react'
 import QuizSection from './QuizSection'
 import { useProgressStore } from '../stores/progressStore'
 
@@ -77,6 +77,14 @@ export default function TopicCard({ topic, documentId }) {
           </button>
         )}
       </div>
+
+      {/* Low confidence warning */}
+      {topic.confidence === 'low' && (
+        <div className="mb-4 flex items-center gap-2 text-xs text-amber-500/80 bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <span>El texto de esta sección se extrajo por coincidencia aproximada. El contenido podría no ser completamente preciso.</span>
+        </div>
+      )}
 
       {/* Summary */}
       <div className="mb-4">

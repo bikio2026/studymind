@@ -7,7 +7,7 @@ const ENDPOINTS = {
 
 export function useLLMStream() {
   const [status, setStatus] = useState({ claude: false, groq: false })
-  const controllerRef = useRef(null)
+  const activeControllers = useRef(new Set())
 
   const checkHealth = useCallback(async () => {
     try {
@@ -24,11 +24,9 @@ export function useLLMStream() {
   }, [])
 
   const streamRequest = useCallback(async (prompt, { provider = 'claude', model, promptVersion = 'structure', maxTokens = 4096, onToken, onDone, onError }) => {
-    if (controllerRef.current) {
-      controllerRef.current.abort()
-    }
+    // Each request gets its own independent controller — no aborting previous requests
     const controller = new AbortController()
-    controllerRef.current = controller
+    activeControllers.current.add(controller)
 
     try {
       const endpoint = ENDPOINTS[provider]
@@ -91,11 +89,17 @@ export function useLLMStream() {
         onError?.(err.message)
         throw err
       }
+    } finally {
+      activeControllers.current.delete(controller)
     }
   }, [])
 
   const cancel = useCallback(() => {
-    controllerRef.current?.abort()
+    // Cancel all active requests
+    for (const controller of activeControllers.current) {
+      controller.abort()
+    }
+    activeControllers.current.clear()
   }, [])
 
   return { status, checkHealth, streamRequest, cancel }

@@ -7,16 +7,18 @@ Identificá la ESTRUCTURA del documento y devolvé ÚNICAMENTE un JSON válido:
   "title": "Título del documento",
   "author": null,
   "sections": [
-    { "id": 1, "title": "Nombre del capítulo/sección", "level": 1, "parentId": null },
-    { "id": 2, "title": "Nombre de subsección", "level": 2, "parentId": 1 }
+    { "id": 1, "title": "Nombre del capítulo/sección", "level": 1, "parentId": null, "pageStart": 12, "pageEnd": 45 },
+    { "id": 2, "title": "Nombre de subsección", "level": 2, "parentId": 1, "pageStart": 12, "pageEnd": 25 }
   ]
 }
 
 REGLAS:
 - level 1 = capítulo o parte principal, level 2 = sección, level 3 = subsección
-- Usá el índice/tabla de contenidos si existe
+- Usá el índice/tabla de contenidos si existe para identificar secciones
 - Si no hay índice formal, inferí las secciones por encabezados y cambios temáticos
-- Incluí TODAS las secciones que identifiques (mínimo las principales)
+- Si podés inferir las páginas de inicio y fin de cada sección (del índice o del texto), incluí "pageStart" y "pageEnd". Si no podés determinarlas, omití esos campos.
+- IMPORTANTE: Solo incluí secciones cuyo CONTENIDO esté PRESENTE en el texto proporcionado. Si el índice menciona capítulos o secciones que NO aparecen en el texto extraído, NO los incluyas. No inventes secciones.
+- NO incluyas secciones estructurales sin contenido propio como: índice, tabla de contenidos, bibliografía, glosario, agradecimientos, apéndices.
 - El JSON debe ser válido y parseable
 
 TEXTO:
@@ -53,6 +55,9 @@ CRITERIOS de "relevance":
 - "core": Concepto fundamental, sin esto no se entiende el resto
 - "supporting": Refuerza conceptos core, importante pero no esencial
 - "detail": Ejemplos, casos particulares, datos específicos
+
+IMPORTANTE: Basá tu guía EXCLUSIVAMENTE en el texto proporcionado abajo. No agregues información externa ni conceptos que no estén en el texto. Si el texto es insuficiente o irrelevante para la sección, respondé con:
+{ "relevance": "detail", "summary": "", "keyConcepts": [], "expandedExplanation": "", "connections": [], "quiz": [], "insufficientText": true }
 
 TEXTO DE LA SECCIÓN:
 ${sectionText}`

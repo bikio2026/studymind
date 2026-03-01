@@ -1,8 +1,45 @@
 import { useCallback, useRef } from 'react'
 import { useLLMStream } from './useLLMStream'
 import { buildStudyGuidePrompt } from '../lib/promptBuilder'
-import { extractSectionText, chunkText } from '../lib/chunkProcessor'
+import { extractSectionTextByPages, extractSectionText, chunkText, precomputeNormalized } from '../lib/chunkProcessor'
 import { useStudyStore } from '../stores/studyStore'
+
+// Sections that are structural, not content
+const NON_CONTENT_PATTERNS = [
+  /^\s*[ií]ndice/i,
+  /^tabla de contenidos?/i,
+  /^bibliograf[ií]a/i,
+  /^referencias?\s*$/i,
+  /^ap[eé]ndice/i,
+  /^anexo/i,
+  /^pr[oó]logo/i,
+  /^prefacio/i,
+  /^agradecimientos/i,
+  /^glosario/i,
+  /^contents?\s*$/i,
+  /^table of contents/i,
+  /^bibliography/i,
+  /^appendix/i,
+  /^index\s*$/i,
+  /^lista de (figuras|tablas|cuadros|gr[aá]ficos)/i,
+]
+
+function isNonContentSection(title) {
+  return NON_CONTENT_PATTERNS.some(pat => pat.test(title.trim()))
+}
+
+// Validate that extracted text is real content (not TOC, page numbers, etc.)
+function isValidSectionText(text) {
+  if (!text || text.length < 200) return false
+
+  // Detect TOC-like text (high ratio of short numbers = page references)
+  const pageNumberPattern = /\b\d{1,3}\b/g
+  const pageNumbers = text.match(pageNumberPattern) || []
+  const words = text.split(/\s+/).length
+  if (words > 0 && pageNumbers.length / words > 0.15) return false
+
+  return true
+}
 
 export function useStudyGuide() {
   const { streamRequest } = useLLMStream()
@@ -27,11 +64,15 @@ export function useStudyGuide() {
     setPhase('generating')
     cancelledRef.current = false
 
-    // Process chapters and top-level sections
-    const sections = structure.sections.filter(s => s.level <= 2)
+    // Filter: level <= 2 + non-content sections removed
+    const allSections = structure.sections.filter(s => s.level <= 2)
+    const sections = allSections.filter(s => !isNonContentSection(s.title))
     setProgress({ current: 0, total: sections.length })
 
     const allTitles = sections.map(s => s.title)
+
+    // Pre-compute normalized fullText once for all sections (avoids O(n²))
+    const normFullCached = precomputeNormalized(document.fullText)
 
     for (let i = 0; i < sections.length; i++) {
       if (cancelledRef.current) break
@@ -41,17 +82,19 @@ export function useStudyGuide() {
       setProgress({ current: i, total: sections.length })
 
       try {
-        const sectionText = extractSectionText(
-          document.fullText,
+        // Use page-based extraction (preferred) or strict title matching (fallback)
+        const { text: sectionText, confidence } = extractSectionTextByPages(
+          document,
           structure.sections,
-          section.id
+          section.id,
+          normFullCached
         )
 
-        if (!sectionText || sectionText.length < 50) {
-          console.warn(`[StudyMind] SKIP "${section.title}" — text length: ${sectionText?.length || 0}`)
+        if (!isValidSectionText(sectionText)) {
+          console.warn(`[StudyMind] SKIP "${section.title}" — text length: ${sectionText?.length || 0}, confidence: ${confidence}`)
           continue
         }
-        console.log(`[StudyMind] OK "${section.title}" — text length: ${sectionText.length}`)
+        console.log(`[StudyMind] OK "${section.title}" — text length: ${sectionText.length}, confidence: ${confidence}`)
 
         const chunks = chunkText(sectionText, 6000)
         const textToSend = chunks[0]
@@ -80,6 +123,19 @@ export function useStudyGuide() {
         const jsonMatch = fullText.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
           const guide = JSON.parse(jsonMatch[0])
+
+          // Skip if LLM reported insufficient text
+          if (guide.insufficientText) {
+            console.warn(`[StudyMind] LLM flagged insufficient text for "${section.title}"`)
+            continue
+          }
+
+          // Skip if summary is empty (LLM couldn't generate meaningful content)
+          if (!guide.summary || guide.summary.trim().length === 0) {
+            console.warn(`[StudyMind] Empty summary for "${section.title}", skipping`)
+            continue
+          }
+
           const topic = {
             id: section.id,
             sectionId: section.id,
@@ -91,6 +147,7 @@ export function useStudyGuide() {
             expandedExplanation: guide.expandedExplanation || guide.expandedExplantion || '',
             connections: guide.connections || [],
             quiz: guide.quiz || [],
+            confidence,
           }
           // Persist to IDB + update store
           await addTopic(documentId, topic)
@@ -117,13 +174,14 @@ export function useStudyGuide() {
     setGeneratingTopic(section.title)
 
     try {
-      const sectionText = extractSectionText(
-        document.fullText,
+      // Try page-based extraction first, fallback to title matching
+      const { text: sectionText, confidence } = extractSectionTextByPages(
+        document,
         structure.sections,
         section.id
       )
 
-      if (!sectionText || sectionText.length < 50) {
+      if (!isValidSectionText(sectionText)) {
         throw new Error(`Texto insuficiente para "${section.title}"`)
       }
 
@@ -152,6 +210,11 @@ export function useStudyGuide() {
       const jsonMatch = fullText.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         const guide = JSON.parse(jsonMatch[0])
+
+        if (guide.insufficientText || !guide.summary?.trim()) {
+          throw new Error(`El modelo no pudo generar contenido para "${section.title}"`)
+        }
+
         const topic = {
           id: section.id,
           sectionId: section.id,
@@ -163,6 +226,7 @@ export function useStudyGuide() {
           expandedExplanation: guide.expandedExplanation || guide.expandedExplantion || '',
           connections: guide.connections || [],
           quiz: guide.quiz || [],
+          confidence,
         }
         await addTopic(documentId, topic)
       }

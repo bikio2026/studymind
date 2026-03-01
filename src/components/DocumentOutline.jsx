@@ -65,8 +65,14 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
                 )}
                 <span className="truncate">{section.title}</span>
                 {!isGenerated && (
-                  <span className="ml-auto shrink-0" title="Sin texto suficiente para generar guía">
-                    <HelpCircle className="w-3 h-3 text-text-muted/30" />
+                  <span className="ml-auto shrink-0 relative group/tip">
+                    <HelpCircle className="w-3 h-3 text-text-muted/40 cursor-help" />
+                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1
+                      text-[10px] leading-tight bg-surface border border-surface-light rounded-md shadow-lg
+                      whitespace-nowrap opacity-0 group-hover/tip:opacity-100 transition-opacity
+                      pointer-events-none z-30 text-text-muted">
+                      Sin texto suficiente para generar guía
+                    </span>
                   </span>
                 )}
                 {isActive && <ChevronRight className="w-3 h-3 ml-auto shrink-0 text-accent" />}
