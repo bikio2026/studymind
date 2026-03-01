@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import TopicCard from './TopicCard'
 import RelevanceFilter from './RelevanceFilter'
 import DocumentOutline from './DocumentOutline'
+import LearningPath from './LearningPath'
 import ProgressDashboard from './ProgressDashboard'
-import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3, List, Route } from 'lucide-react'
 
 export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming }) {
   const [activeTopic, setActiveTopic] = useState(null)
   const [filter, setFilter] = useState('all')
   const [showDashboard, setShowDashboard] = useState(false)
+  const [sidebarTab, setSidebarTab] = useState('outline') // 'outline' | 'path'
   const provider = typeof localStorage !== 'undefined'
     ? (localStorage.getItem('studymind-llm-provider') || 'claude')
     : 'claude'
@@ -36,13 +38,54 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
   return (
     <div className="flex gap-4 h-[calc(100vh-120px)]">
       {/* Sidebar */}
-      <DocumentOutline
-        structure={structure}
-        topics={topics}
-        activeTopic={activeTopic}
-        onSelectTopic={setActiveTopic}
-        documentId={documentId}
-      />
+      <div className="w-72 shrink-0 flex flex-col max-h-[calc(100vh-120px)]">
+        {/* Sidebar tabs */}
+        {topics.length > 0 && (
+          <div className="flex mb-2 bg-surface-alt rounded-lg p-0.5">
+            <button
+              onClick={() => setSidebarTab('outline')}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
+                sidebarTab === 'outline'
+                  ? 'bg-surface-light text-text font-medium'
+                  : 'text-text-muted hover:text-text-dim'
+              }`}
+            >
+              <List className="w-3 h-3" />
+              Índice
+            </button>
+            <button
+              onClick={() => setSidebarTab('path')}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
+                sidebarTab === 'path'
+                  ? 'bg-surface-light text-text font-medium'
+                  : 'text-text-muted hover:text-text-dim'
+              }`}
+            >
+              <Route className="w-3 h-3" />
+              Ruta
+            </button>
+          </div>
+        )}
+
+        {/* Sidebar content */}
+        {sidebarTab === 'outline' ? (
+          <DocumentOutline
+            structure={structure}
+            topics={topics}
+            activeTopic={activeTopic}
+            onSelectTopic={setActiveTopic}
+            documentId={documentId}
+          />
+        ) : (
+          <div className="bg-surface-alt rounded-xl p-4 overflow-y-auto flex-1">
+            <LearningPath
+              topics={topics}
+              activeTopic={activeTopic}
+              onSelectTopic={setActiveTopic}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Main content */}
       <div className="flex-1 overflow-y-auto pr-2">

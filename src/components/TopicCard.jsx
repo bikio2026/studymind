@@ -4,6 +4,7 @@ import QuizSection from './QuizSection'
 import ChatSection from './ChatSection'
 import ConnectionLink from './ConnectionLink'
 import SourceTextViewer from './SourceTextViewer'
+import NextTopicSuggestion from './NextTopicSuggestion'
 import { enrichConnections } from '../lib/connectionParser'
 import { useProgressStore } from '../stores/progressStore'
 import { getMasteryLevel, MASTERY_LEVELS, DEPTH_LEVELS } from '../lib/proficiency'
@@ -228,6 +229,11 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
           <QuizSection
             questions={topic.quiz}
             onComplete={(score) => saveQuizScore(documentId, topic.id, score)}
+          />
+          <NextTopicSuggestion
+            topics={topics}
+            currentTopicId={topic.id}
+            onNavigate={onNavigateToTopic}
           />
         </CollapsibleSection>
       )}

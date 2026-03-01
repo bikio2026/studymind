@@ -1,6 +1,6 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
-**Version actual**: v0.5 (Fase 4)
+**Version actual**: v0.6 (Fase 5)
 
 ## Qué es
 App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia local con IndexedDB y biblioteca de documentos.
@@ -113,12 +113,22 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 | 2 | Chat Conversacional (tutor socrático) | ✅ Completada |
 | 3 | Referencias cruzadas y al texto fuente | ✅ Completada |
 | 4 | Niveles de profundidad y progreso avanzado | ✅ Completada |
-| 5 | Rutas de aprendizaje | Pendiente |
+| 5 | Rutas de aprendizaje | ✅ Completada |
 | 6 | Roles y multi-usuario | Pendiente |
 
 ---
 
 ## Changelog
+
+### v0.6 — Fase 5: Rutas de Aprendizaje (2026-03-01)
+- Algoritmo de learning path: ordena topics por relevancia (core → supporting → detail)
+- Recomendación inteligente del próximo tema basada en mastery (sin empezar → visto → aprendiendo → dominado)
+- Vista "Ruta" en sidebar con tabs (Índice / Ruta) alternables
+- Barras de progreso por fase (Fundamentos / Refuerzo / Profundización)
+- Nodos de path con dots de mastery y navegación directa
+- Sugerencia post-quiz: "Siguiente tema recomendado" aparece al completar quiz
+- Celebración cuando todos los temas están dominados/experto
+- Nuevos componentes: LearningPath, NextTopicSuggestion, learningPath.js
 
 ### v0.5 — Fase 4: Niveles de Profundidad y Progreso Avanzado (2026-03-01)
 - Selector de profundidad por tema: Resumen / Intermedio / Completo (oculta/muestra contenido progresivamente)
