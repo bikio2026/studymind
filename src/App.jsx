@@ -170,8 +170,17 @@ export default function App() {
 
     const isFullRange = startPage === 1 && endPage === doc.totalPages
 
-    // Filter pages to selected range and re-index page numbers
-    const filteredPages = doc.pages.slice(startPage - 1, endPage).map((page, i) => ({
+    // For partial ranges, extend start backward to capture chapter beginnings
+    // (e.g., user picks page 60 but chapter starts at page 57)
+    const CONTEXT_BUFFER = 10
+    const effectiveStart = isFullRange ? startPage : Math.max(1, startPage - CONTEXT_BUFFER)
+
+    if (!isFullRange && effectiveStart < startPage) {
+      console.log(`[StudyMind] Context buffer: extending start from page ${startPage} to ${effectiveStart} (+${startPage - effectiveStart} pages)`)
+    }
+
+    // Filter pages to extended range and re-index page numbers
+    const filteredPages = doc.pages.slice(effectiveStart - 1, endPage).map((page, i) => ({
       ...page,
       pageNumber: i + 1, // Re-index 1-based relative to filtered range
       originalPageNumber: page.pageNumber, // Preserve original for reference
@@ -183,6 +192,7 @@ export default function App() {
       totalPages: filteredPages.length,
       ...(isFullRange ? {} : {
         originalTotalPages: doc.totalPages,
+        // pageRange reflects user's original selection (for prompt context)
         pageRange: { start: startPage, end: endPage, originalTotal: doc.totalPages },
       }),
     }

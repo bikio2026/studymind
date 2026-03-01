@@ -33,7 +33,7 @@ function CollapsibleSection({ title, icon: Icon, expanded, onToggle, children })
   )
 }
 
-export default function TopicCard({ topic, documentId }) {
+export default function TopicCard({ topic, documentId, bookPage }) {
   const [expandedSections, setExpandedSections] = useState({
     explanation: false,
     connections: false,
@@ -66,7 +66,14 @@ export default function TopicCard({ topic, documentId }) {
               </span>
             )}
           </div>
-          <h2 className="text-xl font-bold">{topic.sectionTitle}</h2>
+          <h2 className="text-xl font-bold">
+            {topic.sectionTitle}
+            {bookPage && (
+              <span className="text-sm font-normal text-text-muted/50 font-mono ml-2" title={`Página ${bookPage} del libro`}>
+                p.{bookPage}
+              </span>
+            )}
+          </h2>
         </div>
         {!isStudied && (
           <button
