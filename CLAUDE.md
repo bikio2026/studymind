@@ -1,6 +1,6 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
-**Version actual**: v0.6 (Fase 5)
+**Version actual**: v0.7
 
 ## Qué es
 App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia local con IndexedDB y biblioteca de documentos.
@@ -32,18 +32,21 @@ src/
     studyStore.js               — Zustand: estructura + topics generados
     progressStore.js            — Zustand: progreso del estudiante
     chatStore.js                — Zustand: historial de chat por topic
+    themeStore.js               — Zustand: tema visual activo (persistido localStorage)
   hooks/
     usePDFParser.js             — Extracción de texto de PDF
     useLLMStream.js             — Streaming SSE multi-provider (Claude/Groq)
-    useDocumentAnalysis.js      — Detección de estructura via LLM
-    useStudyGuide.js            — Generación de guías (usa studyStore)
+    useDocumentAnalysis.js      — Detección de estructura via LLM (+ parser TOC local)
+    useStudyGuide.js            — Generación de guías estándar (1 call, secciones cortas)
+    useDeepStudyGuide.js        — Pipeline multi-pass profundo (3 passes, secciones largas)
     useChat.js                  — Lógica de chat socrático multi-turn
   lib/
     db.js                       — Wrapper IndexedDB (documents, structures, topics, progress, chatHistory)
     pdfExtractor.js             — Wrapper de pdfjs-dist
     promptBuilder.js            — Prompts para estructura y guía de estudio
     chunkProcessor.js           — Split de textos largos + fuzzy matching por sección
-    textUtils.js                — Utilidades de texto
+    textUtils.js                — Utilidades de texto + parser TOC + detección offset páginas
+    themes.js                   — 4 temas visuales (midnight, forest, warm, academic)
   components/
     Library.jsx                 — Vista biblioteca (pantalla inicial)
     PDFUploader.jsx             — Drag & drop de PDF
@@ -54,6 +57,7 @@ src/
     TopicCard.jsx               — Card por tema (resumen, conceptos, explicación, quiz, chat)
     QuizSection.jsx             — Autoevaluación interactiva
     ChatSection.jsx             — Chat socrático por tema (streaming, persistente)
+    ThemeSelector.jsx           — Dropdown selector de tema visual
     RelevanceFilter.jsx         — Filtro por capa de relevancia
   App.jsx                       — Routing biblioteca vs estudio + pipeline
   main.jsx                      — Entry point React
@@ -68,15 +72,15 @@ api/
 
 ## Pipeline de procesamiento
 1. **Parseo PDF** — pdfjs-dist extrae texto página por página (client-side)
-2. **Detección de estructura** — LLM analiza texto muestreado y devuelve JSON con secciones
-3. **Generación de guías** — Para cada sección, LLM genera guía con:
-   - Clasificación de relevancia (core / supporting / detail)
-   - Resumen conceptual
-   - Conceptos clave
-   - Explicación expandida (mejorada vs. original)
-   - Conexiones entre temas
-   - Preguntas de autoevaluación
-4. **Persistencia** — Cada topic se guarda en IDB a medida que se genera
+2. **Detección TOC** — Parser local regex busca páginas de índice (keywords + dot-leaders + short-num patterns)
+3. **Detección de estructura** — Si TOC parser extrae ≥5 entradas: usa directo (sin LLM). Fallback: LLM con budget 12K tokens.
+4. **Generación de guías** — Modo automático según tamaño de sección:
+   - **Estándar** (<12K chars): 1 llamada LLM (como antes)
+   - **Multi-pass** (≥12K chars): 3 passes:
+     - Pass 1 (Haiku): Extracción de puntos clave por chunk (~8K tokens c/u)
+     - Pass 2 (Sonnet, 16K output): Síntesis profunda (1500-3000 palabras, sub-secciones con ##)
+     - Pass 3 (Haiku): Quiz 5-8 preguntas + conexiones
+5. **Persistencia** — Cada topic se guarda en IDB a medida que se genera
 
 ## Persistencia (IndexedDB)
 | Store | Key | Contenido |
@@ -119,6 +123,20 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 ---
 
 ## Changelog
+
+### v0.7 — Contenido Profundo Multi-Pass, Sidebar Jerárquico, Temas Visuales (2026-03-01)
+- Pipeline multi-pass para secciones largas (≥12K chars): 3 passes (Haiku→Sonnet→Haiku)
+- Explicaciones profundas de 1500-3000 palabras con sub-secciones (##), ejemplos, fórmulas
+- keyConcepts enriquecidos ({term, definition}) + definiciones formales separadas
+- Quiz 5-8 preguntas (conceptuales + aplicación) generado desde la síntesis profunda
+- Parser TOC local (regex) — evita LLM para detectar estructura cuando el índice es parseable
+- Detección de offset páginas libro vs PDF
+- Sidebar con árbol colapsable 3 niveles (Parte→Capítulo→Sección)
+- Mastery agregado para nodos contenedor (weakest link)
+- 4 temas visuales: Midnight (default), Forest, Warm, Academic (light)
+- Selector dropdown con swatches de color, persistido en localStorage
+- TopicCard con renderizado profundo: DeepExplanationRenderer, KeyConceptsRenderer, DefinitionsBox
+- ProcessingStatus con progreso por pass ("Extrayendo 2/4..." → "Sintetizando..." → "Quiz...")
 
 ### v0.6 — Fase 5: Rutas de Aprendizaje (2026-03-01)
 - Algoritmo de learning path: ordena topics por relevancia (core → supporting → detail)
