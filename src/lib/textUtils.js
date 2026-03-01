@@ -166,6 +166,156 @@ export function extractTOCTextFromRegions(tocResult, maxChars = 12000) {
   return result.slice(0, maxChars)
 }
 
+// --- TOC Parser: extract structured entries from TOC text ---
+
+/**
+ * Parse TOC text into structured entries with titles, page numbers, and levels.
+ * Returns array of { title, pageNumber, level, type }
+ */
+export function parseTOCEntries(tocText) {
+  if (!tocText) return []
+
+  const entries = []
+  const lines = tocText.split('\n').map(l => l.trim()).filter(Boolean)
+
+  for (const line of lines) {
+    // Skip very short lines or lines that are just numbers
+    if (line.length < 3 || /^\d+$/.test(line)) continue
+
+    // Extract page number from end of line (with or without dots/leaders)
+    const pageMatch = line.match(/[.…·\s]{2,}\s*(\d{1,4})\s*$/) || line.match(/\s{2,}(\d{1,4})\s*$/)
+    if (!pageMatch) continue
+
+    const pageNumber = parseInt(pageMatch[1], 10)
+    const title = line.slice(0, pageMatch.index).replace(/[.…·]+\s*$/, '').trim()
+
+    if (!title || title.length < 2) continue
+
+    // Detect level based on content patterns
+    let level = 2 // default: chapter
+    let type = 'section'
+
+    const normTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+    // Part detection
+    if (/^(parte|part)\s+[ivxlcdm\d]+/i.test(title) || /^(PARTE|PART)\s/.test(title)) {
+      level = 1
+      type = 'part'
+    }
+    // Chapter detection (explicit)
+    else if (/^(capitulo|cap\.?|chapter|ch\.?)\s+\d+/i.test(normTitle)) {
+      level = 2
+      type = 'chapter'
+    }
+    // Numbered chapter (just number + title, like "3. Teoría del ingreso")
+    else if (/^\d{1,2}[\.\)]\s/.test(title) && !/^\d{1,2}\.\d/.test(title)) {
+      level = 2
+      type = 'chapter'
+    }
+    // Sub-section: decimal numbering (3.1, 3.2, 12.3)
+    else if (/^\d{1,2}\.\d{1,2}/.test(title)) {
+      level = 3
+      type = 'subsection'
+    }
+    // Detect indentation level from original line
+    else {
+      const leadingSpaces = line.match(/^(\s*)/)[1].length
+      if (leadingSpaces >= 6) level = 3
+      else if (leadingSpaces >= 3) level = 2
+    }
+
+    entries.push({ title, pageNumber, level, type })
+  }
+
+  // If no parts detected, promote chapters to level 1
+  const hasParts = entries.some(e => e.type === 'part')
+  if (!hasParts) {
+    for (const entry of entries) {
+      if (entry.type === 'chapter') entry.level = 1
+      else if (entry.type === 'subsection') entry.level = 2
+    }
+  }
+
+  console.log(`[StudyMind] TOC parsed: ${entries.length} entries (${entries.filter(e => e.level === 1).length} L1, ${entries.filter(e => e.level === 2).length} L2, ${entries.filter(e => e.level === 3).length} L3)`)
+  return entries
+}
+
+/**
+ * Detect page offset between book page numbers (from TOC) and PDF page numbers.
+ * Returns the offset to add to book page to get PDF page.
+ */
+export function detectPageOffset(pages, tocEntries) {
+  if (!pages?.length || !tocEntries?.length) return 0
+
+  const normalizeForSearch = (text) =>
+    text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+  // Try first 5 TOC entries to find a match
+  for (const entry of tocEntries.slice(0, 5)) {
+    if (!entry.pageNumber) continue
+    const searchTitle = normalizeForSearch(entry.title)
+    if (searchTitle.length < 5) continue
+
+    // Search in pages around where we'd expect the content
+    const searchStart = Math.max(0, entry.pageNumber - 10)
+    const searchEnd = Math.min(pages.length, entry.pageNumber + 30)
+
+    for (let i = searchStart; i < searchEnd; i++) {
+      const pageText = normalizeForSearch(pages[i].text)
+      if (pageText.includes(searchTitle)) {
+        const offset = pages[i].pageNumber - entry.pageNumber
+        console.log(`[StudyMind] Page offset detected: ${offset} (found "${entry.title}" at PDF page ${pages[i].pageNumber}, book page ${entry.pageNumber})`)
+        return offset
+      }
+    }
+  }
+
+  console.log('[StudyMind] Could not detect page offset, defaulting to 0')
+  return 0
+}
+
+/**
+ * Convert parsed TOC entries into section structure (similar to LLM output format).
+ * Assigns parentId based on level hierarchy.
+ */
+export function tocEntriesToStructure(entries, pageOffset = 0) {
+  const sections = []
+  const parentStack = [] // stack of { id, level }
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]
+    const id = i + 1
+
+    // Find parent: closest ancestor in stack with lower level
+    while (parentStack.length > 0 && parentStack[parentStack.length - 1].level >= entry.level) {
+      parentStack.pop()
+    }
+    const parentId = parentStack.length > 0 ? parentStack[parentStack.length - 1].id : null
+
+    // Calculate PDF page from book page + offset
+    const pdfPage = entry.pageNumber + pageOffset
+
+    sections.push({
+      id,
+      title: entry.title,
+      level: entry.level,
+      parentId,
+      pageStart: pdfPage,
+      bookPage: entry.pageNumber,
+    })
+
+    parentStack.push({ id, level: entry.level })
+  }
+
+  // Compute pageEnd for each section
+  for (let i = 0; i < sections.length; i++) {
+    const next = sections.find((s, j) => j > i && s.level <= sections[i].level)
+    sections[i].pageEnd = next ? next.pageStart - 1 : null
+  }
+
+  return sections
+}
+
 // --- Main sampling function ---
 
 export function getSampledText(pages, maxTokens = 8000, tocText = null) {

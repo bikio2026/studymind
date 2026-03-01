@@ -43,11 +43,20 @@ export default function ProcessingStatus({ phase, progress, generatingTopic, onS
           </div>
         )}
 
-        {/* Current topic name */}
+        {/* Current topic name + pass detail */}
         {generatingTopic && (
-          <p className="text-text-dim text-sm animate-pulse-soft mb-4">
-            Procesando: <span className="text-text">{generatingTopic}</span>
-          </p>
+          <div className="text-sm mb-4">
+            {generatingTopic.includes(' — ') ? (
+              <>
+                <p className="text-text font-medium">{generatingTopic.split(' — ')[0]}</p>
+                <p className="text-accent/80 text-xs mt-1 animate-pulse-soft">{generatingTopic.split(' — ')[1]}</p>
+              </>
+            ) : (
+              <p className="text-text-dim animate-pulse-soft">
+                Procesando: <span className="text-text">{generatingTopic}</span>
+              </p>
+            )}
+          </div>
         )}
 
         {/* Stop button — only during generating phase */}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { usePDFParser } from './hooks/usePDFParser'
 import { useDocumentAnalysis } from './hooks/useDocumentAnalysis'
-import { useStudyGuide } from './hooks/useStudyGuide'
+import { useDeepStudyGuide } from './hooks/useDeepStudyGuide'
 import { useLLMStream } from './hooks/useLLMStream'
 import { useDocumentStore } from './stores/documentStore'
 import { useStudyStore } from './stores/studyStore'
@@ -16,6 +16,8 @@ import DuplicateDialog from './components/DuplicateDialog'
 import PageRangeDialog from './components/PageRangeDialog'
 import StopDialog from './components/StopDialog'
 import CancelConfirmDialog from './components/CancelConfirmDialog'
+import ThemeSelector from './components/ThemeSelector'
+import { useThemeStore } from './stores/themeStore'
 import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu } from 'lucide-react'
 
 async function computeContentHash(fullText, totalPages) {
@@ -31,7 +33,7 @@ export default function App() {
   const {
     phase, setPhase, topics, generatingTopic, progress: genProgress,
     error: guideError, generateGuides, cancelGeneration, reset: resetGuide
-  } = useStudyGuide()
+  } = useDeepStudyGuide()
   const { status, checkHealth } = useLLMStream()
 
   // Dialog states
@@ -53,9 +55,12 @@ export default function App() {
 
   const loadProgress = useProgressStore(s => s.loadProgress)
 
-  // Load library, check health, and fix stale processing docs on mount
+  const initTheme = useThemeStore(s => s.initTheme)
+
+  // Load library, check health, init theme, and fix stale processing docs on mount
   useEffect(() => {
     const init = async () => {
+      initTheme()
       await loadDocuments()
       checkHealth()
 
@@ -351,6 +356,7 @@ export default function App() {
             <BookOpen className="w-6 h-6 text-accent" />
             <h1 className="text-xl font-bold tracking-tight">StudyMind</h1>
           </div>
+          <ThemeSelector />
         </header>
 
         <Library onNewDocument={handleFileSelect} />
@@ -407,6 +413,7 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <ThemeSelector />
           {activeDoc?.model && (
             <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1 rounded-lg flex items-center gap-1.5 border border-surface-light/30">
               <Cpu className="w-3 h-3" />

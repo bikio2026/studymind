@@ -47,13 +47,17 @@ Identificá la ESTRUCTURA del documento y devolvé ÚNICAMENTE un JSON válido:
 }
 
 REGLAS:
-- level 1 = capítulo o parte principal, level 2 = sección, level 3 = subsección
+ESTRUCTURA JERÁRQUICA:
+- Si el libro tiene "Partes" (Parte I, Parte II, etc.): level 1 = Parte, level 2 = Capítulo, level 3 = Sección/Apartado
+- Si el libro NO tiene partes: level 1 = Capítulo, level 2 = Sección, level 3 = Subsección
+- parentId: referencia al id de la sección padre (null si es nivel 1)
+
 - Usá el índice/tabla de contenidos si existe para identificar secciones
 - Si no hay índice formal, inferí las secciones por encabezados y cambios temáticos
 - Si podés inferir las páginas de inicio y fin de cada sección (del índice o del texto), incluí "pageStart" y "pageEnd". Si no podés determinarlas, omití esos campos.
-- IMPORTANTE: Solo incluí secciones cuyo CONTENIDO esté PRESENTE en el texto proporcionado. Si el índice menciona capítulos o secciones que NO aparecen en el texto extraído, NO los incluyas. No inventes secciones.
-- NO incluyas secciones estructurales sin contenido propio como: índice, tabla de contenidos, bibliografía, glosario, agradecimientos, apéndices.
-- GRANULARIDAD: Detectá capítulos y secciones individuales, no solo las partes o divisiones principales del libro. Si el libro tiene "Parte I" que contiene capítulos 1, 2 y 3, incluí TANTO la parte como los capítulos individuales. Objetivo: entre 8 y 25 secciones de nivel 1-2 para un libro típico. Si detectás menos de 6, revisá si hay subdivisiones internas que debas incluir.
+- IMPORTANTE: Solo incluí secciones cuyo CONTENIDO esté PRESENTE en el texto proporcionado. No inventes secciones.
+- NO incluyas secciones estructurales sin contenido propio: índice, bibliografía, glosario, agradecimientos, apéndices.
+- GRANULARIDAD: Detectá hasta 3 niveles de profundidad. Objetivo: 10-30 secciones totales incluyendo todos los niveles. Si detectás menos de 6, revisá si hay subdivisiones internas.
 - El JSON debe ser válido y parseable
 
 TEXTO:
@@ -96,4 +100,110 @@ IMPORTANTE: Basá tu guía EXCLUSIVAMENTE en el texto proporcionado abajo. No ag
 
 TEXTO DE LA SECCIÓN:
 ${sectionText}`
+}
+
+// --- Multi-pass deep prompts ---
+
+export function buildChunkExtractionPrompt(chunkText, chunkIndex, totalChunks, sectionTitle) {
+  return `Estás analizando la parte ${chunkIndex + 1} de ${totalChunks} del texto de la sección "${sectionTitle}".
+
+Tu tarea es EXTRAER los puntos clave de este fragmento. No resumas: identificá y listá lo que el texto dice.
+
+Devolvé ÚNICAMENTE un JSON válido:
+
+{
+  "concepts": ["concepto 1: breve definición", "concepto 2: breve definición"],
+  "arguments": ["argumento o razonamiento central presentado"],
+  "definitions": ["término — definición formal del texto"],
+  "examples": ["descripción del ejemplo y qué ilustra"],
+  "formulas": ["fórmula o modelo y qué representa"],
+  "rawNotes": "Síntesis de 400-600 palabras cubriendo TODO lo que este fragmento explica. Incluí los detalles importantes, no solo generalidades."
+}
+
+REGLAS:
+- SOLO extraé lo que está EXPLÍCITAMENTE en el texto. No agregues conocimiento externo.
+- Si no hay fórmulas, devolvé array vacío. Lo mismo para cada campo.
+- "definitions" son definiciones formales que el texto da, no inferencias tuyas.
+- "examples" incluye tanto ejemplos numéricos como casos ilustrativos.
+- "rawNotes" es lo más importante: debe capturar la sustancia del fragmento con suficiente detalle para que alguien que no leyó el original entienda qué dice.
+- Escribí en español.
+
+TEXTO (parte ${chunkIndex + 1}/${totalChunks}):
+${chunkText}`
+}
+
+export function buildDeepSynthesisPrompt(sectionTitle, chunkExtracts, documentTitle, allSectionTitles) {
+  const extractsText = chunkExtracts.map((ext, i) =>
+    `--- FRAGMENTO ${i + 1} ---\nConceptos: ${ext.concepts?.join('; ') || 'ninguno'}\nArgumentos: ${ext.arguments?.join('; ') || 'ninguno'}\nDefiniciones: ${ext.definitions?.join('; ') || 'ninguna'}\nEjemplos: ${ext.examples?.join('; ') || 'ninguno'}\nFórmulas: ${ext.formulas?.join('; ') || 'ninguna'}\nNotas: ${ext.rawNotes || ''}`
+  ).join('\n\n')
+
+  return `Sos un tutor universitario experto. A partir de los puntos clave extraídos de TODOS los fragmentos de la sección, creá una guía de estudio PROFUNDA y COMPLETA.
+
+DOCUMENTO: "${documentTitle}"
+SECCIÓN: "${sectionTitle}"
+OTRAS SECCIONES DEL DOCUMENTO: ${allSectionTitles.join(' | ')}
+
+MATERIAL EXTRAÍDO DE ${chunkExtracts.length} FRAGMENTOS:
+${extractsText}
+
+Devolvé ÚNICAMENTE un JSON válido:
+
+{
+  "relevance": "core",
+  "summary": "Resumen ejecutivo en 3-4 oraciones que capture la esencia.",
+  "keyConcepts": [
+    { "term": "nombre del concepto", "definition": "definición clara y completa" }
+  ],
+  "deepExplanation": "Explicación profunda y estructurada (ver instrucciones abajo).",
+  "definitions": [
+    { "term": "término", "definition": "definición formal" }
+  ],
+  "connections": ["Relación con 'otra sección': cómo se conectan"]
+}
+
+INSTRUCCIONES PARA "deepExplanation":
+- Extensión: 1500-3000 palabras. Esto NO es un resumen, es una EXPLICACIÓN TUTORIAL completa.
+- Usá sub-títulos con formato "## Subtítulo" para organizar el contenido en bloques temáticos.
+- Para cada concepto principal:
+  1. Explicalo conceptualmente (¿qué es? ¿por qué importa?)
+  2. Si hay fórmulas/modelos, explicá paso a paso qué representa cada componente
+  3. Si hay ejemplos en el material, incluílos y explicá qué demuestran
+  4. Conectá con el concepto anterior/siguiente para dar coherencia
+- Usá analogías cuando ayuden a construir intuición.
+- Separar párrafos con doble salto de línea.
+- Escribí en español rioplatense, claro y didáctico.
+- TODO el contenido debe provenir del material extraído. No inventes información.
+
+CRITERIOS de "relevance":
+- "core": Concepto fundamental, sin esto no se entiende el resto del documento
+- "supporting": Refuerza conceptos core, importante pero no esencial
+- "detail": Ejemplos, casos particulares, datos específicos`
+}
+
+export function buildQuizFromSynthesisPrompt(sectionTitle, deepExplanation, allSectionTitles) {
+  return `A partir de la siguiente explicación profunda de la sección "${sectionTitle}", generá un quiz de autoevaluación y las conexiones con otras secciones.
+
+EXPLICACIÓN:
+${deepExplanation}
+
+OTRAS SECCIONES: ${allSectionTitles.join(' | ')}
+
+Devolvé ÚNICAMENTE un JSON válido:
+
+{
+  "quiz": [
+    { "question": "Pregunta conceptual que evalúe comprensión profunda", "answer": "Respuesta completa y clara" },
+    { "question": "Pregunta aplicada (caso práctico o ejemplo)", "answer": "Respuesta con razonamiento" }
+  ],
+  "connections": ["Relación con 'otra sección': explicación de cómo se conectan"]
+}
+
+REGLAS:
+- Generá entre 5 y 8 preguntas.
+- Mix obligatorio: al menos 3 conceptuales + 2 de aplicación/razonamiento.
+- Las preguntas conceptuales evalúan COMPRENSIÓN, no memorización de datos.
+- Las preguntas de aplicación plantean un escenario y piden analizar/predecir.
+- Las respuestas deben ser completas (3-5 oraciones), explicando el razonamiento.
+- Las conexiones deben referir a secciones del mismo documento, indicando la relación específica.
+- Escribí en español.`
 }

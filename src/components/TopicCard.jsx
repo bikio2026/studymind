@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText, Layers } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText, Layers, BookMarked } from 'lucide-react'
 import QuizSection from './QuizSection'
 import ChatSection from './ChatSection'
 import ConnectionLink from './ConnectionLink'
@@ -35,6 +35,116 @@ function CollapsibleSection({ title, icon: Icon, expanded, onToggle, children })
           {children}
         </div>
       )}
+    </div>
+  )
+}
+
+// Render deep explanation with ## sub-headings parsed into sections
+function DeepExplanationRenderer({ text, depth }) {
+  if (!text) return null
+
+  // Split on ## headings
+  const parts = text.split(/^(## .+)$/gm).filter(Boolean)
+
+  const sections = []
+  let currentHeading = null
+  let currentContent = ''
+
+  for (const part of parts) {
+    if (part.startsWith('## ')) {
+      if (currentHeading || currentContent.trim()) {
+        sections.push({ heading: currentHeading, content: currentContent.trim() })
+      }
+      currentHeading = part.replace('## ', '').trim()
+      currentContent = ''
+    } else {
+      currentContent += part
+    }
+  }
+  if (currentHeading || currentContent.trim()) {
+    sections.push({ heading: currentHeading, content: currentContent.trim() })
+  }
+
+  // In "intermedio" mode: show only first paragraph of each sub-section
+  const getContent = (content) => {
+    if (depth === 'intermedio') {
+      const firstParagraph = content.split(/\n\n/)[0]
+      return firstParagraph
+    }
+    return content
+  }
+
+  return (
+    <div className="space-y-5">
+      {sections.map((section, i) => (
+        <div key={i}>
+          {section.heading && (
+            <h4 className="text-sm font-semibold text-accent mb-2">{section.heading}</h4>
+          )}
+          <div className="text-text-dim leading-relaxed whitespace-pre-line text-sm">
+            {getContent(section.content)}
+            {depth === 'intermedio' && section.content.includes('\n\n') && (
+              <span className="text-text-muted/50 text-xs ml-1">[...]</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Render enriched key concepts (with definitions) or simple strings
+function KeyConceptsRenderer({ concepts }) {
+  if (!concepts?.length) return null
+
+  // Check if concepts are enriched objects { term, definition } or plain strings
+  const isEnriched = typeof concepts[0] === 'object' && concepts[0]?.term
+
+  if (isEnriched) {
+    return (
+      <div className="space-y-2">
+        {concepts.map((c, i) => (
+          <div key={i} className="bg-surface-light/50 rounded-lg px-3 py-2">
+            <span className="text-sm font-medium text-text">{c.term}</span>
+            {c.definition && (
+              <p className="text-xs text-text-dim mt-0.5 leading-relaxed">{c.definition}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // Plain strings (backward compatible)
+  return (
+    <div className="flex flex-wrap gap-2">
+      {concepts.map((concept, i) => (
+        <span key={i} className="text-xs bg-surface-light/80 px-3 py-1.5 rounded-full text-text-dim">
+          {concept}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// Render formal definitions box
+function DefinitionsBox({ definitions }) {
+  if (!definitions?.length) return null
+
+  return (
+    <div className="bg-accent/5 border border-accent/15 rounded-xl p-4">
+      <h4 className="text-xs font-semibold text-accent uppercase tracking-wider mb-3 flex items-center gap-1.5">
+        <BookMarked className="w-3.5 h-3.5" />
+        Definiciones Formales
+      </h4>
+      <dl className="space-y-2.5">
+        {definitions.map((def, i) => (
+          <div key={i}>
+            <dt className="text-sm font-semibold text-text">{def.term}</dt>
+            <dd className="text-sm text-text-dim leading-relaxed mt-0.5">{def.definition}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   )
 }
@@ -171,21 +281,31 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
             <Lightbulb className="w-4 h-4" />
             Conceptos Clave
           </h3>
-          <div className="flex flex-wrap gap-2">
-            {topic.keyConcepts.map((concept, i) => (
-              <span
-                key={i}
-                className="text-xs bg-surface-light/80 px-3 py-1.5 rounded-full text-text-dim"
-              >
-                {concept}
-              </span>
-            ))}
-          </div>
+          <KeyConceptsRenderer concepts={topic.keyConcepts} />
         </div>
       )}
 
-      {/* Expandable: Explanation (only in completo mode) */}
-      {showExplanation && (
+      {/* Definitions (shown in intermedio and completo) */}
+      {showKeyConcepts && topic.definitions?.length > 0 && (
+        <div className="mb-4">
+          <DefinitionsBox definitions={topic.definitions} />
+        </div>
+      )}
+
+      {/* Deep Explanation (for multi-pass deep mode) */}
+      {topic.deepExplanation && depth !== 'resumen' && (
+        <CollapsibleSection
+          title={`Explicación Profunda${topic.chunkCount > 1 ? ` (${topic.chunkCount} fragmentos analizados)` : ''}`}
+          icon={BookOpen}
+          expanded={expandedSections.explanation}
+          onToggle={() => toggle('explanation')}
+        >
+          <DeepExplanationRenderer text={topic.deepExplanation} depth={depth} />
+        </CollapsibleSection>
+      )}
+
+      {/* Legacy Explanation (for standard mode / backward compat) */}
+      {!topic.deepExplanation && showExplanation && topic.expandedExplanation && (
         <CollapsibleSection
           title="Explicación Expandida"
           icon={BookOpen}

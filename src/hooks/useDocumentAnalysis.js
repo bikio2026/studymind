@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useLLMStream } from './useLLMStream'
 import { buildStructurePrompt } from '../lib/promptBuilder'
-import { getSampledText } from '../lib/textUtils'
+import { getSampledText, parseTOCEntries, detectPageOffset, tocEntriesToStructure } from '../lib/textUtils'
 
 export function useDocumentAnalysis() {
   const [structure, setStructure] = useState(null)
@@ -14,9 +14,29 @@ export function useDocumentAnalysis() {
     setError(null)
 
     try {
-      // Use less text for Groq to stay within free tier TPM limits (12K tokens/min)
-      const maxTokens = provider === 'groq' ? 2500 : 8000
+      // Try local TOC parsing first (no LLM needed)
       const tocText = document.tocText || null
+      if (tocText) {
+        const tocEntries = parseTOCEntries(tocText)
+        if (tocEntries.length >= 5) {
+          console.log(`[StudyMind] Using local TOC parser: ${tocEntries.length} entries detected`)
+          const pageOffset = detectPageOffset(document.pages, tocEntries)
+          const sections = tocEntriesToStructure(tocEntries, pageOffset)
+
+          // Infer title from first page or TOC header
+          const titleMatch = tocText.match(/^(.{5,80}?)[\n\r]/) || document.pages?.[0]?.text?.match(/^(.{5,80}?)[\n\r]/)
+          const title = titleMatch?.[1]?.trim() || document.fileName || 'Documento'
+
+          const parsed = { title, author: null, sections }
+          setStructure(parsed)
+          return parsed
+        }
+        console.log(`[StudyMind] Local TOC parse insufficient (${tocEntries.length} entries), falling back to LLM`)
+      }
+
+      // Fallback: LLM-based structure detection
+      // Use more text budget for Claude to get better structure detection
+      const maxTokens = provider === 'groq' ? 2500 : 12000
       const sampledText = getSampledText(document.pages, maxTokens, tocText)
       const prompt = buildStructurePrompt(sampledText, document.totalPages, document.pageRange || null)
 
