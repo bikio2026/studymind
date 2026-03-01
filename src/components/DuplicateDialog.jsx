@@ -9,9 +9,7 @@ function formatDate(ts) {
   })
 }
 
-export default function DuplicateDialog({ existingDocs, currentModel, onProceed, onOpen, onCancel }) {
-  const currentModelName = MODEL_DISPLAY[currentModel] || currentModel
-  const sameModelExists = existingDocs.some(d => d.model === currentModel)
+export default function DuplicateDialog({ existingDocs, onProceed, onOpen, onCancel }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn">
@@ -58,14 +56,6 @@ export default function DuplicateDialog({ existingDocs, currentModel, onProceed,
           </div>
         </div>
 
-        {/* Same model warning */}
-        {sameModelExists && (
-          <div className="mx-6 mb-3 p-2.5 rounded-lg bg-warning/5 border border-warning/20 text-[11px] text-warning flex items-start gap-2">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <span>Ya procesaste este documento con <strong>{currentModelName}</strong>. Los resultados podrían ser similares.</span>
-          </div>
-        )}
-
         {/* Actions */}
         <div className="px-6 pb-5 pt-2 flex flex-col gap-2">
           <button
@@ -73,7 +63,7 @@ export default function DuplicateDialog({ existingDocs, currentModel, onProceed,
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
           >
             <RotateCcw className="w-4 h-4" />
-            Procesar con {currentModelName}
+            Procesar de nuevo
           </button>
           <button
             onClick={onCancel}

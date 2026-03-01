@@ -1,10 +1,40 @@
 import { useState } from 'react'
-import { FileText, Scissors, X } from 'lucide-react'
+import { FileText, Scissors, X, Cpu, Zap } from 'lucide-react'
 
-export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCancel }) {
+const PROVIDERS = {
+  claude: {
+    name: 'Claude',
+    models: [
+      { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', desc: 'Rápido y económico' },
+      { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4', desc: 'Mayor calidad' },
+    ],
+  },
+  groq: {
+    name: 'Groq',
+    models: [
+      { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', desc: 'Rápido, tier gratuito' },
+      { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', desc: 'Ultra rápido' },
+    ],
+  },
+}
+
+const STORAGE_KEYS = {
+  provider: 'studymind-llm-provider',
+  model: 'studymind-llm-model',
+}
+
+export default function PageRangeDialog({ fileName, totalPages, status, onConfirm, onCancel }) {
   // Raw string state — allows clearing fields and typing freely
   const [startRaw, setStartRaw] = useState('1')
   const [endRaw, setEndRaw] = useState(String(totalPages))
+
+  // LLM selection — read last used from localStorage
+  const [provider, setProvider] = useState(
+    () => localStorage.getItem(STORAGE_KEYS.provider) || 'claude'
+  )
+  const [model, setModel] = useState(
+    () => localStorage.getItem(STORAGE_KEYS.model) || 'claude-haiku-4-5-20251001'
+  )
 
   // Derived numeric values (used for validation and display)
   const startPage = parseInt(startRaw) || 0
@@ -15,7 +45,18 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
   const isValid = startPage >= 1 && endPage <= totalPages && startPage <= endPage && startRaw !== '' && endRaw !== ''
 
   const handleConfirm = () => {
-    if (isValid) onConfirm(startPage, endPage)
+    if (isValid) {
+      // Persist LLM selection for next time
+      localStorage.setItem(STORAGE_KEYS.provider, provider)
+      localStorage.setItem(STORAGE_KEYS.model, model)
+      onConfirm(startPage, endPage, { provider, model })
+    }
+  }
+
+  const handleProviderChange = (newProvider) => {
+    setProvider(newProvider)
+    // Switch to first available model of new provider
+    setModel(PROVIDERS[newProvider].models[0].id)
   }
 
   // Clamp values on blur (not on every keystroke)
@@ -31,6 +72,8 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
     if (n < (parseInt(startRaw) || 1)) setStartRaw(String(n))
   }
 
+  const providerAvailable = (key) => !status || status[key]
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fadeIn">
       <div className="bg-surface rounded-2xl border border-surface-light shadow-2xl w-full max-w-md mx-4 overflow-hidden">
@@ -41,8 +84,8 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
               <Scissors className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h3 className="font-semibold text-text">Rango de páginas</h3>
-              <p className="text-xs text-text-muted">Elegí qué parte del PDF procesar</p>
+              <h3 className="font-semibold text-text">Configuración</h3>
+              <p className="text-xs text-text-muted">Páginas y modelo de IA</p>
             </div>
           </div>
           <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-surface-light transition-colors">
@@ -61,9 +104,10 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
 
         {/* Page range inputs */}
         <div className="px-6 mt-5">
+          <label className="text-xs font-medium text-text-dim mb-2 block">Rango de páginas</label>
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">Desde página</label>
+              <label className="text-xs text-text-muted mb-1 block">Desde</label>
               <input
                 type="number"
                 min={1}
@@ -78,7 +122,7 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
             </div>
             <span className="text-text-muted mt-5">—</span>
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">Hasta página</label>
+              <label className="text-xs text-text-muted mb-1 block">Hasta</label>
               <input
                 type="number"
                 min={1}
@@ -128,6 +172,56 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
               </button>
             )}
           </div>
+        </div>
+
+        {/* Model selector */}
+        <div className="px-6 mt-5">
+          <label className="text-xs font-medium text-text-dim mb-2 block flex items-center gap-1.5">
+            <Cpu className="w-3.5 h-3.5" />
+            Modelo de IA
+          </label>
+          <div className="flex items-center gap-2">
+            {/* Provider selector */}
+            <div className="flex rounded-lg border border-surface-light overflow-hidden">
+              {Object.entries(PROVIDERS).map(([key, { name }]) => (
+                <button
+                  key={key}
+                  onClick={() => providerAvailable(key) && handleProviderChange(key)}
+                  disabled={!providerAvailable(key)}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors
+                    ${provider === key
+                      ? 'bg-accent text-white'
+                      : providerAvailable(key)
+                        ? 'bg-surface-alt text-text-muted hover:text-text'
+                        : 'bg-surface-alt text-text-muted/40 cursor-not-allowed'
+                    }`}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+
+            {/* Model selector */}
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="flex-1 bg-surface-alt text-text px-3 py-1.5 rounded-lg border border-surface-light text-xs cursor-pointer focus:outline-none focus:border-accent transition-colors"
+            >
+              {PROVIDERS[provider].models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} — {m.desc}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Groq warning */}
+          {provider === 'groq' && pageCount > 30 && (
+            <p className="text-[10px] text-warning mt-1.5 flex items-center gap-1">
+              <Zap className="w-3 h-3" />
+              Groq tiene un límite de 12K tokens/min (tier gratuito). Con muchas páginas puede fallar.
+            </p>
+          )}
         </div>
 
         {/* Actions */}

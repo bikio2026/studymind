@@ -110,9 +110,41 @@ export function extractSectionTextByPages(document, sections, sectionId, normFul
     return { text, confidence: 'high' }
   }
 
-  // Strategy 2: fallback to strict title matching (no keyword match)
-  const result = extractSectionTextStrict(document.fullText, sections, sectionId, normFullCached)
-  return result
+  // Strategy 2: try title matching on fullText
+  if (document.fullText) {
+    const result = extractSectionTextStrict(document.fullText, sections, sectionId, normFullCached)
+    if (result.text && result.text.length >= 100) {
+      return result
+    }
+  }
+
+  // Strategy 3: proportional page distribution
+  // When page ranges and title matching both fail, distribute pages evenly among sections.
+  // This handles cases where the LLM couldn't determine page ranges (e.g., no TOC in selected pages)
+  if (document.pages && document.pages.length > 0) {
+    const contentSections = sections.filter(s => s.level <= 2)
+    const sectionIdx = contentSections.findIndex(s => s.id === sectionId)
+    if (sectionIdx !== -1 && contentSections.length > 0) {
+      const totalPages = document.pages.length
+      const pagesPerSection = totalPages / contentSections.length
+      const start = Math.floor(sectionIdx * pagesPerSection)
+      const end = Math.min(totalPages, Math.ceil((sectionIdx + 1) * pagesPerSection))
+
+      if (end > start) {
+        const text = document.pages
+          .slice(start, end)
+          .map(p => p.text)
+          .join('\n\n')
+          .trim()
+
+        if (text.length >= 50) {
+          return { text, confidence: 'medium' }
+        }
+      }
+    }
+  }
+
+  return { text: '', confidence: 'low' }
 }
 
 // Strict text extraction by title matching (without keyword fallback)

@@ -8,11 +8,9 @@ import { useStudyStore } from './stores/studyStore'
 import { useProgressStore } from './stores/progressStore'
 import { db } from './lib/db'
 import { getModelName } from './lib/models'
-import PDFUploader from './components/PDFUploader'
 import ProcessingStatus from './components/ProcessingStatus'
 import StudyGuide from './components/StudyGuide'
 import Library from './components/Library'
-import LLMSelector from './components/LLMSelector'
 import DuplicateDialog from './components/DuplicateDialog'
 import PageRangeDialog from './components/PageRangeDialog'
 import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu } from 'lucide-react'
@@ -50,17 +48,6 @@ export default function App() {
 
   const loadProgress = useProgressStore(s => s.loadProgress)
 
-  // LLM config persisted in localStorage
-  const llmConfig = {
-    provider: localStorage.getItem('studymind-llm-provider') || 'claude',
-    model: localStorage.getItem('studymind-llm-model') || 'claude-haiku-4-5-20251001',
-  }
-
-  const setLLMConfig = useCallback(({ provider, model }) => {
-    localStorage.setItem('studymind-llm-provider', provider)
-    localStorage.setItem('studymind-llm-model', model)
-  }, [])
-
   // Load library and check health on mount
   useEffect(() => {
     loadDocuments()
@@ -81,7 +68,7 @@ export default function App() {
   }, [activeDocumentId, loadFromDB, loadProgress])
 
   // Process a parsed PDF document (called after page range selection)
-  const processDocument = useCallback(async (doc, contentHash) => {
+  const processDocument = useCallback(async (doc, contentHash, config) => {
     const documentId = crypto.randomUUID()
     const docRecord = {
       id: documentId,
@@ -92,8 +79,8 @@ export default function App() {
       processedAt: Date.now(),
       status: 'processing',
       contentHash,
-      provider: llmConfig.provider,
-      model: llmConfig.model,
+      provider: config.provider,
+      model: config.model,
       // Page range metadata (if partial processing)
       ...(doc.pageRange && {
         pageRange: doc.pageRange,
@@ -104,7 +91,7 @@ export default function App() {
     setActiveDocument(documentId)
 
     setPhase('analyzing')
-    const struct = await analyzeStructure(doc, llmConfig)
+    const struct = await analyzeStructure(doc, config)
     if (!struct) {
       setPhase('idle')
       return
@@ -118,11 +105,11 @@ export default function App() {
       await renameDocument(documentId, struct.title)
     }
 
-    await generateGuides(documentId, doc, struct, llmConfig)
+    await generateGuides(documentId, doc, struct, config)
 
     const { updateDocumentStatus } = useDocumentStore.getState()
     await updateDocumentStatus(documentId, 'ready')
-  }, [analyzeStructure, generateGuides, llmConfig, setPhase, saveDocument, setActiveDocument, saveStructure])
+  }, [analyzeStructure, generateGuides, setPhase, saveDocument, setActiveDocument, saveStructure])
 
   // Show page range dialog for a parsed doc
   const showPageRangeDialog = useCallback((doc, contentHash) => {
@@ -175,7 +162,7 @@ export default function App() {
   }, [resetParser])
 
   // Page range dialog handlers
-  const handlePageRangeConfirm = useCallback(async (startPage, endPage) => {
+  const handlePageRangeConfirm = useCallback(async (startPage, endPage, config) => {
     if (!pageRangeInfo) return
     const { parsedDoc: doc, contentHash } = pageRangeInfo
     setPageRangeInfo(null)
@@ -200,7 +187,7 @@ export default function App() {
     }
 
     setPhase('parsing')
-    await processDocument(filteredDoc, contentHash)
+    await processDocument(filteredDoc, contentHash, config)
   }, [pageRangeInfo, processDocument, setPhase])
 
   const handlePageRangeCancel = useCallback(() => {
@@ -230,7 +217,6 @@ export default function App() {
             <BookOpen className="w-6 h-6 text-accent" />
             <h1 className="text-xl font-bold tracking-tight">StudyMind</h1>
           </div>
-          <LLMSelector status={status} onProviderChange={setLLMConfig} />
         </header>
 
         <Library onNewDocument={handleFileSelect} />
@@ -239,7 +225,6 @@ export default function App() {
         {duplicateInfo && (
           <DuplicateDialog
             existingDocs={duplicateInfo.existingDocs}
-            currentModel={llmConfig.model}
             onProceed={handleDuplicateProceed}
             onOpen={handleDuplicateOpen}
             onCancel={handleDuplicateCancel}
@@ -251,6 +236,7 @@ export default function App() {
           <PageRangeDialog
             fileName={pageRangeInfo.parsedDoc.fileName}
             totalPages={pageRangeInfo.parsedDoc.totalPages}
+            status={status}
             onConfirm={handlePageRangeConfirm}
             onCancel={handlePageRangeCancel}
           />
@@ -287,17 +273,19 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {currentPhase === 'ready' && activeDoc?.model ? (
+          {activeDoc?.model && (
             <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1 rounded-lg flex items-center gap-1.5 border border-surface-light/30">
               <Cpu className="w-3 h-3" />
               {getModelName(activeDoc.model)}
-              <span className="text-text-muted/50">·</span>
-              <span className="text-text-muted/70">
-                {new Date(activeDoc.processedAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
-              </span>
+              {activeDoc.processedAt && (
+                <>
+                  <span className="text-text-muted/50">·</span>
+                  <span className="text-text-muted/70">
+                    {new Date(activeDoc.processedAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
+                  </span>
+                </>
+              )}
             </span>
-          ) : (
-            <LLMSelector status={status} onProviderChange={setLLMConfig} />
           )}
           {currentPhase !== 'idle' && currentPhase !== 'ready' && (
             <button
