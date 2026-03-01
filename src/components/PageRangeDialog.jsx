@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileText, Scissors, X, Cpu, Zap } from 'lucide-react'
+import { FileText, Scissors, X, Cpu, Zap, ChevronRight, BookOpen, Info } from 'lucide-react'
 
 const PROVIDERS = {
   claude: {
@@ -36,6 +36,12 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
     () => localStorage.getItem(STORAGE_KEYS.model) || 'claude-haiku-4-5-20251001'
   )
 
+  // TOC configuration
+  const [tocOpen, setTocOpen] = useState(false)
+  const [tocMode, setTocMode] = useState('auto') // 'auto' | 'manual' | 'none'
+  const [tocStartRaw, setTocStartRaw] = useState('')
+  const [tocEndRaw, setTocEndRaw] = useState('')
+
   // Derived numeric values (used for validation and display)
   const startPage = parseInt(startRaw) || 0
   const endPage = parseInt(endRaw) || 0
@@ -49,7 +55,20 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
       // Persist LLM selection for next time
       localStorage.setItem(STORAGE_KEYS.provider, provider)
       localStorage.setItem(STORAGE_KEYS.model, model)
-      onConfirm(startPage, endPage, { provider, model })
+
+      // Build TOC config
+      let tocConfig = { mode: tocMode }
+      if (tocMode === 'manual') {
+        const ts = parseInt(tocStartRaw) || 0
+        const te = parseInt(tocEndRaw) || 0
+        if (ts >= 1 && te >= ts && te <= totalPages) {
+          tocConfig = { mode: 'manual', start: ts, end: te }
+        } else {
+          tocConfig = { mode: 'auto' } // fallback to auto if invalid manual range
+        }
+      }
+
+      onConfirm(startPage, endPage, { provider, model }, tocConfig)
     }
   }
 
@@ -221,6 +240,88 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
               <Zap className="w-3 h-3" />
               Groq tiene un límite de 12K tokens/min (tier gratuito). Con muchas páginas puede fallar.
             </p>
+          )}
+        </div>
+
+        {/* TOC configuration — collapsible */}
+        <div className="px-6 mt-4">
+          <button
+            onClick={() => setTocOpen(!tocOpen)}
+            className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text transition-colors w-full"
+          >
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${tocOpen ? 'rotate-90' : ''}`} />
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="font-medium">Configuración del índice</span>
+          </button>
+
+          {tocOpen && (
+            <div className="mt-3 pl-5 space-y-2 animate-fadeIn">
+              {/* Auto */}
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="radio" name="tocMode" value="auto"
+                  checked={tocMode === 'auto'} onChange={() => setTocMode('auto')}
+                  className="accent-accent"
+                />
+                <span className="text-xs text-text-muted group-hover:text-text transition-colors">
+                  Detección automática
+                </span>
+              </label>
+
+              {/* Manual */}
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="radio" name="tocMode" value="manual"
+                  checked={tocMode === 'manual'} onChange={() => setTocMode('manual')}
+                  className="accent-accent"
+                />
+                <span className="text-xs text-text-muted group-hover:text-text transition-colors">
+                  Indicar manualmente
+                </span>
+              </label>
+
+              {tocMode === 'manual' && (
+                <div className="flex items-center gap-2 pl-5">
+                  <span className="text-xs text-text-dim">Págs.</span>
+                  <input
+                    type="number" min={1} max={totalPages}
+                    value={tocStartRaw}
+                    onChange={(e) => setTocStartRaw(e.target.value)}
+                    placeholder="Desde"
+                    className="w-16 px-2 py-1 rounded bg-surface-alt border border-surface-light text-text text-xs text-center font-mono
+                      focus:outline-none focus:border-accent transition-colors
+                      [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="text-text-muted text-xs">a</span>
+                  <input
+                    type="number" min={1} max={totalPages}
+                    value={tocEndRaw}
+                    onChange={(e) => setTocEndRaw(e.target.value)}
+                    placeholder="Hasta"
+                    className="w-16 px-2 py-1 rounded bg-surface-alt border border-surface-light text-text text-xs text-center font-mono
+                      focus:outline-none focus:border-accent transition-colors
+                      [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              )}
+
+              {/* None */}
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="radio" name="tocMode" value="none"
+                  checked={tocMode === 'none'} onChange={() => setTocMode('none')}
+                  className="accent-accent"
+                />
+                <span className="text-xs text-text-muted group-hover:text-text transition-colors">
+                  Sin índice
+                </span>
+              </label>
+
+              <p className="text-[10px] text-text-dim flex items-start gap-1 mt-1">
+                <Info className="w-3 h-3 shrink-0 mt-0.5" />
+                <span>Si tu libro tiene un índice al inicio o al final, indicá las páginas para mejorar la detección de capítulos.</span>
+              </p>
+            </div>
           )}
         </div>
 

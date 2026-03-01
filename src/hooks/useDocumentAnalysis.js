@@ -16,8 +16,9 @@ export function useDocumentAnalysis() {
     try {
       // Use less text for Groq to stay within free tier TPM limits (12K tokens/min)
       const maxTokens = provider === 'groq' ? 2500 : 8000
-      const sampledText = getSampledText(document.pages, maxTokens)
-      const prompt = buildStructurePrompt(sampledText, document.totalPages)
+      const tocText = document.tocText || null
+      const sampledText = getSampledText(document.pages, maxTokens, tocText)
+      const prompt = buildStructurePrompt(sampledText, document.totalPages, document.pageRange || null)
 
       let fullText = ''
       await streamRequest(prompt, {

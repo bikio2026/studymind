@@ -8,6 +8,7 @@ import { useStudyStore } from './stores/studyStore'
 import { useProgressStore } from './stores/progressStore'
 import { db } from './lib/db'
 import { getModelName } from './lib/models'
+import { detectTOCPages, extractTOCTextFromRegions } from './lib/textUtils'
 import ProcessingStatus from './components/ProcessingStatus'
 import StudyGuide from './components/StudyGuide'
 import Library from './components/Library'
@@ -162,7 +163,7 @@ export default function App() {
   }, [resetParser])
 
   // Page range dialog handlers
-  const handlePageRangeConfirm = useCallback(async (startPage, endPage, config) => {
+  const handlePageRangeConfirm = useCallback(async (startPage, endPage, config, tocConfig = { mode: 'auto' }) => {
     if (!pageRangeInfo) return
     const { parsedDoc: doc, contentHash } = pageRangeInfo
     setPageRangeInfo(null)
@@ -182,8 +183,24 @@ export default function App() {
       totalPages: filteredPages.length,
       ...(isFullRange ? {} : {
         originalTotalPages: doc.totalPages,
-        pageRange: { start: startPage, end: endPage },
+        pageRange: { start: startPage, end: endPage, originalTotal: doc.totalPages },
       }),
+    }
+
+    // TOC detection for partial ranges
+    if (!isFullRange && tocConfig.mode !== 'none') {
+      if (tocConfig.mode === 'manual' && tocConfig.start && tocConfig.end) {
+        // User specified TOC pages manually
+        const manualPages = doc.pages.slice(tocConfig.start - 1, tocConfig.end)
+        filteredDoc.tocText = manualPages.map(p => p.text).join('\n\n')
+        console.log(`[StudyMind] TOC manual: pages ${tocConfig.start}-${tocConfig.end} (${manualPages.length} pages)`)
+      } else {
+        // Auto-detect TOC from full PDF
+        const tocResult = detectTOCPages(doc.pages)
+        if (tocResult.hasTOC) {
+          filteredDoc.tocText = extractTOCTextFromRegions(tocResult)
+        }
+      }
     }
 
     setPhase('parsing')
