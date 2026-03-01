@@ -64,6 +64,11 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
                   <Circle className="w-3.5 h-3.5 text-text-muted/20 shrink-0" />
                 )}
                 <span className="truncate">{section.title}</span>
+                {section.bookPage && (
+                  <span className="text-[10px] text-text-muted/50 shrink-0 font-mono" title={`Página ${section.bookPage} del libro`}>
+                    p.{section.bookPage}
+                  </span>
+                )}
                 {!isGenerated && (
                   <span className="ml-auto shrink-0 relative group/tip">
                     <HelpCircle className="w-3 h-3 text-text-muted/40 cursor-help" />

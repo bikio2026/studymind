@@ -13,16 +13,16 @@ Identificá la ESTRUCTURA de las secciones DENTRO del rango seleccionado y devol
   "title": "Título del documento",
   "author": null,
   "sections": [
-    { "id": 1, "title": "Nombre del capítulo/sección", "level": 1, "parentId": null },
-    { "id": 2, "title": "Nombre de subsección", "level": 2, "parentId": 1 }
+    { "id": 1, "title": "Nombre del capítulo/sección", "level": 1, "parentId": null, "bookPage": 120 },
+    { "id": 2, "title": "Nombre de subsección", "level": 2, "parentId": 1, "bookPage": 125 }
   ]
 }
 
 REGLAS:
 - Usá el índice para identificar capítulos y secciones cuyo contenido cae DENTRO del rango de páginas ${start}-${end}.
 - NUMERACIÓN: Los números de página del índice son la NUMERACIÓN IMPRESA del libro, que puede diferir de la del PDF en varias páginas (portada, créditos, etc.). Usá tu criterio para mapear.
+- "bookPage": incluí el número de página IMPRESO del libro (del índice). Es solo referencia visual, no se usa para extracción.
 - level 1 = capítulo o parte principal, level 2 = sección, level 3 = subsección
-- NO incluyas "pageStart"/"pageEnd" — la extracción de contenido se hará por otro mecanismo.
 - IMPORTANTE: Solo incluí secciones cuyo contenido esté en las páginas seleccionadas. Si el índice menciona capítulos fuera del rango, NO los incluyas.
 - NO incluyas secciones estructurales: índice, bibliografía, glosario, agradecimientos, apéndices.
 - GRANULARIDAD: Detectá capítulos y secciones individuales. Objetivo: entre 8 y 25 secciones de nivel 1-2. Si detectás menos de 6, revisá si hay subdivisiones internas.
