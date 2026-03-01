@@ -1,7 +1,10 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText } from 'lucide-react'
 import QuizSection from './QuizSection'
 import ChatSection from './ChatSection'
+import ConnectionLink from './ConnectionLink'
+import SourceTextViewer from './SourceTextViewer'
+import { enrichConnections } from '../lib/connectionParser'
 import { useProgressStore } from '../stores/progressStore'
 
 const RELEVANCE = {
@@ -34,8 +37,9 @@ function CollapsibleSection({ title, icon: Icon, expanded, onToggle, children })
   )
 }
 
-export default function TopicCard({ topic, documentId, bookPage, provider }) {
+export default function TopicCard({ topic, documentId, bookPage, provider, sections, topics, onNavigateToTopic }) {
   const [expandedSections, setExpandedSections] = useState({
+    sourceText: false,
     explanation: false,
     connections: false,
     quiz: false,
@@ -48,6 +52,12 @@ export default function TopicCard({ topic, documentId, bookPage, provider }) {
 
   const isStudied = topicProgress?.studied || false
   const rel = RELEVANCE[topic.relevance] || RELEVANCE.supporting
+
+  // Enrich connections with navigation data
+  const enrichedConnections = useMemo(
+    () => enrichConnections(topic.connections, sections, topics),
+    [topic.connections, sections, topics]
+  )
 
   const toggle = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }))
@@ -100,6 +110,22 @@ export default function TopicCard({ topic, documentId, bookPage, provider }) {
         <p className="text-text leading-relaxed text-[15px]">{topic.summary}</p>
       </div>
 
+      {/* Source Text Viewer */}
+      {sections?.length > 0 && (
+        <CollapsibleSection
+          title="Texto Original del PDF"
+          icon={FileText}
+          expanded={expandedSections.sourceText}
+          onToggle={() => toggle('sourceText')}
+        >
+          <SourceTextViewer
+            documentId={documentId}
+            topicId={topic.id}
+            sections={sections}
+          />
+        </CollapsibleSection>
+      )}
+
       {/* Key Concepts */}
       {topic.keyConcepts?.length > 0 && (
         <div className="mb-4">
@@ -133,7 +159,7 @@ export default function TopicCard({ topic, documentId, bookPage, provider }) {
       </CollapsibleSection>
 
       {/* Expandable: Connections */}
-      {topic.connections?.length > 0 && (
+      {enrichedConnections.length > 0 && (
         <CollapsibleSection
           title="Conexiones con otros temas"
           icon={Link2}
@@ -141,11 +167,12 @@ export default function TopicCard({ topic, documentId, bookPage, provider }) {
           onToggle={() => toggle('connections')}
         >
           <ul className="space-y-2">
-            {topic.connections.map((conn, i) => (
-              <li key={i} className="text-text-dim text-sm flex items-start gap-2">
-                <span className="text-accent mt-0.5 shrink-0">&bull;</span>
-                <span>{conn}</span>
-              </li>
+            {enrichedConnections.map((conn, i) => (
+              <ConnectionLink
+                key={i}
+                connection={conn}
+                onNavigate={onNavigateToTopic}
+              />
             ))}
           </ul>
         </CollapsibleSection>

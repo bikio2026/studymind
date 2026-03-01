@@ -32,7 +32,7 @@ export function chunkText(text, maxTokens = 6000) {
 }
 
 // Normalize text for fuzzy matching: lowercase, strip accents, collapse whitespace, remove punctuation
-function normalize(text) {
+export function normalizeText(text) {
   return text
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip accents
     .toLowerCase()
@@ -55,15 +55,15 @@ function findTitleIndex(fullText, title, normFullCached = null) {
   if (idx !== -1) return { idx, method: 'case-insensitive' }
 
   // 3. Normalized match — search the normalized fullText for the normalized title
-  const normFull = normFullCached || normalize(fullText)
-  const normTitle = normalize(title)
+  const normFull = normFullCached || normalizeText(fullText)
+  const normTitle = normalizeText(title)
   const normIdx = normFull.indexOf(normTitle)
   if (normIdx !== -1) {
     // Map normalized index back to original: walk original text tracking position
     let origIdx = 0
     let normCount = 0
     for (let i = 0; i < fullText.length && normCount < normIdx; i++) {
-      const charNorm = normalize(fullText[i])
+      const charNorm = normalizeText(fullText[i])
       if (charNorm.length > 0) normCount += charNorm.length
       origIdx = i + 1
     }
@@ -192,5 +192,5 @@ export function extractSectionText(fullText, sections, sectionId) {
 
 // Pre-compute normalized fullText once for batch operations
 export function precomputeNormalized(fullText) {
-  return normalize(fullText)
+  return normalizeText(fullText)
 }

@@ -1,6 +1,6 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
-**Version actual**: v0.3 (Fase 2)
+**Version actual**: v0.4 (Fase 3)
 
 ## Qué es
 App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia local con IndexedDB y biblioteca de documentos.
@@ -111,7 +111,7 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 |------|-------------|--------|
 | 1 | Persistencia y Biblioteca | ✅ Completada |
 | 2 | Chat Conversacional (tutor socrático) | ✅ Completada |
-| 3 | Referencias cruzadas y al texto fuente | Pendiente |
+| 3 | Referencias cruzadas y al texto fuente | ✅ Completada |
 | 4 | Niveles de profundidad y progreso avanzado | Pendiente |
 | 5 | Rutas de aprendizaje | Pendiente |
 | 6 | Roles y multi-usuario | Pendiente |
@@ -119,6 +119,15 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 ---
 
 ## Changelog
+
+### v0.4 — Fase 3: Referencias Cruzadas y Texto Fuente (2026-03-01)
+- Conexiones clickeables: parseo de nombres de sección desde strings de conexión + fuzzy matching
+- Click en conexión navega directamente al topic relacionado
+- Visor de texto fuente del PDF por sección con carga lazy desde IndexedDB
+- Badge de confianza (Alta/Media/Baja) según método de extracción del texto
+- Cache en memoria para evitar recargas del texto fuente
+- Nuevos componentes: ConnectionLink, SourceTextViewer, connectionParser
+- `normalizeText` exportado de chunkProcessor para reutilización
 
 ### v0.3 — Fase 2: Chat Conversacional / Tutor Socrático (2026-03-01)
 - Chat socrático per-topic con streaming en tiempo real

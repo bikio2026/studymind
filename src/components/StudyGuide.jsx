@@ -107,6 +107,9 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
             documentId={documentId}
             bookPage={structure.sections.find(s => s.id === currentTopic.id)?.bookPage}
             provider={provider}
+            sections={structure.sections}
+            topics={topics}
+            onNavigateToTopic={setActiveTopic}
           />
         ) : filteredTopics.length === 0 && filter !== 'all' ? (
           <div className="text-center text-text-muted py-20">
