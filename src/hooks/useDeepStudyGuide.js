@@ -283,7 +283,15 @@ export function useDeepStudyGuide() {
         continue
       }
 
-      setGeneratingTopic(section.title)
+      // Build display label with page info
+      const pageInfo = section.bookPage
+        ? ` (p.${section.bookPage})`
+        : section.pageStart
+          ? ` (pág.${section.pageStart}${section.pageEnd ? `-${section.pageEnd}` : ''})`
+          : ''
+      const sectionLabel = `${section.title}${pageInfo}`
+
+      setGeneratingTopic(sectionLabel)
       setProgress({ current: i, total: contentSections.length })
 
       try {
@@ -299,7 +307,7 @@ export function useDeepStudyGuide() {
           continue
         }
 
-        console.log(`[StudyMind] Processing "${section.title}" — ${sectionText.length} chars, confidence: ${confidence}`)
+        console.log(`[StudyMind] Processing "${section.title}"${pageInfo} — ${sectionText.length} chars, confidence: ${confidence}`)
 
         let topic
 
@@ -308,7 +316,7 @@ export function useDeepStudyGuide() {
           topic = await generateDeep(
             section, sectionText, structure,
             { provider, model },
-            (passMsg) => setGeneratingTopic(`${section.title} — ${passMsg}`)
+            (passMsg) => setGeneratingTopic(`${sectionLabel} — ${passMsg}`)
           )
         } else {
           // Standard mode: single call

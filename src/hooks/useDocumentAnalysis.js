@@ -13,14 +13,28 @@ export function useDocumentAnalysis() {
     setAnalyzing(true)
     setError(null)
 
+    // Page range for filtering sections (original PDF page numbers)
+    const pageRange = document.pageRange || null
+
     try {
       // Try local TOC parsing first (no LLM needed)
       const tocText = document.tocText || null
       if (tocText) {
-        const tocEntries = parseTOCEntries(tocText)
+        let tocEntries = parseTOCEntries(tocText)
+        const pageOffset = detectPageOffset(document.pages, tocEntries)
+
+        // Filter TOC entries to selected page range BEFORE building structure
+        if (pageRange && tocEntries.length > 0) {
+          const beforeFilter = tocEntries.length
+          tocEntries = tocEntries.filter(entry => {
+            const pdfPage = entry.pageNumber + pageOffset
+            return pdfPage >= pageRange.start && pdfPage <= pageRange.end
+          })
+          console.log(`[StudyMind] TOC filtered by page range ${pageRange.start}-${pageRange.end}: ${beforeFilter} → ${tocEntries.length} entries`)
+        }
+
         if (tocEntries.length >= 5) {
           console.log(`[StudyMind] Using local TOC parser: ${tocEntries.length} entries detected`)
-          const pageOffset = detectPageOffset(document.pages, tocEntries)
           const sections = tocEntriesToStructure(tocEntries, pageOffset)
 
           // Infer title from first page or TOC header
@@ -76,6 +90,26 @@ export function useDocumentAnalysis() {
           ...s,
           id: s.id || i + 1,
         }))
+
+        // Filter LLM sections by page range if applicable
+        if (pageRange && parsed.sections.some(s => s.pageStart)) {
+          const before = parsed.sections.length
+          parsed.sections = parsed.sections.filter(s => {
+            if (!s.pageStart) return true // keep if no page info
+            return s.pageStart >= pageRange.start && s.pageStart <= pageRange.end
+          })
+          // Re-index ids after filtering
+          parsed.sections = parsed.sections.map((s, i) => ({ ...s, id: i + 1 }))
+          // Re-assign parentIds (clear broken refs)
+          const validIds = new Set(parsed.sections.map(s => s.id))
+          parsed.sections = parsed.sections.map(s => ({
+            ...s,
+            parentId: s.parentId && validIds.has(s.parentId) ? s.parentId : null,
+          }))
+          if (before !== parsed.sections.length) {
+            console.log(`[StudyMind] LLM sections filtered by page range: ${before} → ${parsed.sections.length}`)
+          }
+        }
       }
 
       setStructure(parsed)
