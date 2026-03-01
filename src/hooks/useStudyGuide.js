@@ -32,11 +32,12 @@ function isNonContentSection(title) {
 function isValidSectionText(text) {
   if (!text || text.length < 100) return false
 
-  // Detect TOC-like text (high ratio of short numbers = page references)
-  const pageNumberPattern = /\b\d{1,3}\b/g
-  const pageNumbers = text.match(pageNumberPattern) || []
-  const words = text.split(/\s+/).length
-  if (words > 0 && pageNumbers.length / words > 0.15) return false
+  // Detect TOC-like text: lines with dots/ellipsis followed by page numbers
+  // e.g., "Capítulo 1 .............. 15" or "Sección 2.3 … 42"
+  const tocLinePattern = /[.…·]{3,}\s*\d{1,3}\s*$/gm
+  const tocLines = text.match(tocLinePattern) || []
+  const totalLines = text.split('\n').filter(l => l.trim()).length
+  if (totalLines > 0 && tocLines.length / totalLines > 0.3) return false
 
   return true
 }
@@ -68,6 +69,21 @@ export function useStudyGuide() {
     const allSections = structure.sections.filter(s => s.level <= 2)
     const sections = allSections.filter(s => !isNonContentSection(s.title))
     setProgress({ current: 0, total: sections.length })
+
+    // Diagnostic logging
+    console.log('[StudyMind] generateGuides start:', {
+      provider, model,
+      docPages: document.pages?.length || 0,
+      hasPages: !!document.pages,
+      fullTextLen: document.fullText?.length || 0,
+      allSections: structure.sections.length,
+      filteredSections: sections.length,
+      withPageStart: structure.sections.filter(s => s.pageStart).length,
+      sectionSample: sections.slice(0, 5).map(s => ({
+        id: s.id, title: s.title.slice(0, 40),
+        pageStart: s.pageStart, pageEnd: s.pageEnd,
+      })),
+    })
 
     const allTitles = sections.map(s => s.title)
 

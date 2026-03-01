@@ -80,34 +80,42 @@ export function extractSectionTextByPages(document, sections, sectionId, normFul
   const section = sections.find(s => s.id === sectionId)
   if (!section) return { text: '', confidence: 'low' }
 
-  // Strategy 1: use page ranges if available
+  // Strategy 1: use page ranges if available from LLM
   if (section.pageStart && document.pages) {
     const start = Math.max(0, section.pageStart - 1) // 0-indexed
 
-    // Determine end: use pageEnd, or next section's pageStart, or +20 pages max
-    let end
-    if (section.pageEnd) {
-      end = Math.min(document.pages.length, section.pageEnd)
-    } else {
-      // Find next section at same or higher level to determine end
-      const sectionIdx = sections.indexOf(section)
-      const nextSection = sections.find(
-        (s, i) => i > sectionIdx && s.level <= section.level && s.pageStart
-      )
-      end = nextSection
-        ? Math.min(document.pages.length, nextSection.pageStart - 1)
-        : Math.min(document.pages.length, start + 20)
+    // Only proceed if start is within document range
+    if (start < document.pages.length) {
+      // Determine end: use pageEnd, or next section's pageStart, or +20 pages max
+      let end
+      if (section.pageEnd) {
+        end = Math.min(document.pages.length, section.pageEnd)
+      } else {
+        // Find next section at same or higher level to determine end
+        const sectionIdx = sections.indexOf(section)
+        const nextSection = sections.find(
+          (s, i) => i > sectionIdx && s.level <= section.level && s.pageStart
+        )
+        end = nextSection
+          ? Math.min(document.pages.length, nextSection.pageStart - 1)
+          : Math.min(document.pages.length, start + 20)
+      }
+
+      if (end <= start) end = Math.min(document.pages.length, start + 5)
+
+      const text = document.pages
+        .slice(start, end)
+        .map(p => p.text)
+        .join('\n\n')
+        .trim()
+
+      // Only return if we got meaningful text; otherwise fall through to other strategies
+      if (text.length >= 100) {
+        return { text, confidence: 'high' }
+      }
     }
-
-    if (end <= start) end = Math.min(document.pages.length, start + 5)
-
-    const text = document.pages
-      .slice(start, end)
-      .map(p => p.text)
-      .join('\n\n')
-      .trim()
-
-    return { text, confidence: 'high' }
+    // Fall through — page numbers from LLM were out of range or extracted text too short
+    console.warn(`[StudyMind] Strategy 1 fallthrough: "${section.title}" (pageStart: ${section.pageStart}, docPages: ${document.pages.length})`)
   }
 
   // Strategy 2: try title matching on fullText
