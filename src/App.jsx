@@ -211,12 +211,8 @@ export default function App() {
       console.log(`[StudyMind] Context buffer: extending start from page ${startPage} to ${effectiveStart} (+${startPage - effectiveStart} pages)`)
     }
 
-    // Filter pages to extended range and re-index page numbers
-    const filteredPages = doc.pages.slice(effectiveStart - 1, endPage).map((page, i) => ({
-      ...page,
-      pageNumber: i + 1,
-      originalPageNumber: page.pageNumber,
-    }))
+    // Filter pages to extended range — keep original PDF page numbers
+    const filteredPages = doc.pages.slice(effectiveStart - 1, endPage)
     const filteredDoc = {
       ...doc,
       pages: filteredPages,

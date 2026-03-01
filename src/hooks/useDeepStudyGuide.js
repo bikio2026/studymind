@@ -283,12 +283,10 @@ export function useDeepStudyGuide() {
         continue
       }
 
-      // Build display label with page info
-      const pageInfo = section.bookPage
-        ? ` (p.${section.bookPage})`
-        : section.pageStart
-          ? ` (pág.${section.pageStart}${section.pageEnd ? `-${section.pageEnd}` : ''})`
-          : ''
+      // Build display label with PDF page info (matches user-selected range)
+      const pageInfo = section.pageStart
+        ? ` (p.${section.pageStart}${section.pageEnd ? `-${section.pageEnd}` : ''})`
+        : ''
       const sectionLabel = `${section.title}${pageInfo}`
 
       setGeneratingTopic(sectionLabel)

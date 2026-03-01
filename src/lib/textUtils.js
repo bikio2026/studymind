@@ -256,11 +256,8 @@ export function detectPageOffset(pages, tocEntries) {
     const searchTitle = normalizeForSearch(entry.title)
     if (searchTitle.length < 5) continue
 
-    // Search in pages around where we'd expect the content
-    const searchStart = Math.max(0, entry.pageNumber - 10)
-    const searchEnd = Math.min(pages.length, entry.pageNumber + 30)
-
-    for (let i = searchStart; i < searchEnd; i++) {
+    // Search all pages — works with both full documents and filtered page ranges
+    for (let i = 0; i < pages.length; i++) {
       const pageText = normalizeForSearch(pages[i].text)
       if (pageText.includes(searchTitle)) {
         const offset = pages[i].pageNumber - entry.pageNumber

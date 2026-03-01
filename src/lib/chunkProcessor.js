@@ -80,31 +80,35 @@ export function extractSectionTextByPages(document, sections, sectionId, normFul
   const section = sections.find(s => s.id === sectionId)
   if (!section) return { text: '', confidence: 'low' }
 
-  // Strategy 1: use page ranges if available from LLM
+  // Strategy 1: use page ranges if available from LLM/TOC
+  // Uses findIndex to locate pages by pageNumber — works with filtered page ranges
   if (section.pageStart && document.pages) {
-    const start = Math.max(0, section.pageStart - 1) // 0-indexed
+    const startIdx = document.pages.findIndex(p => p.pageNumber >= section.pageStart)
 
-    // Only proceed if start is within document range
-    if (start < document.pages.length) {
-      // Determine end: use pageEnd, or next section's pageStart, or +20 pages max
-      let end
+    if (startIdx !== -1) {
+      // Determine end index: use pageEnd, or next section's pageStart, or +20 pages max
+      let endIdx
       if (section.pageEnd) {
-        end = Math.min(document.pages.length, section.pageEnd)
+        const found = document.pages.findIndex(p => p.pageNumber > section.pageEnd)
+        endIdx = found !== -1 ? found : document.pages.length
       } else {
         // Find next section at same or higher level to determine end
         const sectionIdx = sections.indexOf(section)
         const nextSection = sections.find(
           (s, i) => i > sectionIdx && s.level <= section.level && s.pageStart
         )
-        end = nextSection
-          ? Math.min(document.pages.length, nextSection.pageStart - 1)
-          : Math.min(document.pages.length, start + 20)
+        if (nextSection) {
+          const found = document.pages.findIndex(p => p.pageNumber >= nextSection.pageStart)
+          endIdx = found !== -1 ? found : document.pages.length
+        } else {
+          endIdx = Math.min(document.pages.length, startIdx + 20)
+        }
       }
 
-      if (end <= start) end = Math.min(document.pages.length, start + 5)
+      if (endIdx <= startIdx) endIdx = Math.min(document.pages.length, startIdx + 5)
 
       const text = document.pages
-        .slice(start, end)
+        .slice(startIdx, endIdx)
         .map(p => p.text)
         .join('\n\n')
         .trim()

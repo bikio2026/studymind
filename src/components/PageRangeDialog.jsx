@@ -123,7 +123,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
 
         {/* Page range inputs */}
         <div className="px-6 mt-5">
-          <label className="text-xs font-medium text-text-dim mb-2 block">Rango de páginas</label>
+          <label className="text-xs font-medium text-text-dim mb-2 block">Rango de páginas del PDF</label>
           <div className="flex items-center gap-3">
             <div className="flex-1">
               <label className="text-xs text-text-muted mb-1 block">Desde</label>
@@ -155,6 +155,11 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
               />
             </div>
           </div>
+
+          <p className="text-[10px] text-text-dim mt-1.5 flex items-center gap-1">
+            <Info className="w-3 h-3 shrink-0" />
+            Usá los números de página del PDF, no los del libro impreso.
+          </p>
 
           {/* Quick presets */}
           <div className="flex gap-2 mt-3">
