@@ -4,6 +4,17 @@ import { buildStudyGuidePrompt } from '../lib/promptBuilder'
 import { extractSectionTextByPages, extractSectionText, chunkText, precomputeNormalized } from '../lib/chunkProcessor'
 import { useStudyStore } from '../stores/studyStore'
 
+// Delay between API requests to avoid rate limits (ms)
+// Groq free tier: ~6K TPM for 70B, needs significant gaps
+const INTER_REQUEST_DELAY = {
+  claude: 500,   // 0.5s — Claude has generous limits
+  groq: 4000,    // 4s — Groq free tier needs breathing room
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 // Sections that are structural, not content
 const NON_CONTENT_PATTERNS = [
   /^\s*[ií]ndice/i,
@@ -71,18 +82,15 @@ export function useStudyGuide() {
     setProgress({ current: 0, total: sections.length })
 
     // Diagnostic logging
+    const skippedCount = sections.filter(s => skipIds.has(s.id)).length
+    const toGenerate = sections.length - skippedCount
     console.log('[StudyMind] generateGuides start:', {
       provider, model,
-      docPages: document.pages?.length || 0,
-      hasPages: !!document.pages,
-      fullTextLen: document.fullText?.length || 0,
-      allSections: structure.sections.length,
-      filteredSections: sections.length,
-      withPageStart: structure.sections.filter(s => s.pageStart).length,
-      sectionSample: sections.slice(0, 5).map(s => ({
-        id: s.id, title: s.title.slice(0, 40),
-        pageStart: s.pageStart, pageEnd: s.pageEnd,
-      })),
+      totalSections: sections.length,
+      skipping: skippedCount,
+      toGenerate,
+      apiCallsExpected: toGenerate + ' (1 per section)',
+      estimatedDelay: `${(INTER_REQUEST_DELAY[provider] || 1000) * toGenerate / 1000}s total inter-request delay`,
     })
 
     const allTitles = sections.map(s => s.title)
@@ -174,6 +182,12 @@ export function useStudyGuide() {
           }
           // Persist to IDB + update store
           await addTopic(documentId, topic)
+        }
+
+        // Delay between requests to avoid rate limits (especially Groq)
+        if (i < sections.length - 1 && !cancelledRef.current) {
+          const delay = INTER_REQUEST_DELAY[provider] || 1000
+          await sleep(delay)
         }
       } catch (err) {
         if (err.name === 'AbortError' || cancelledRef.current) {

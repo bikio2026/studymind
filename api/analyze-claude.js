@@ -1,4 +1,4 @@
-const { ANTHROPIC_API_URL, ANTHROPIC_VERSION, getSystemPrompt, sseHeaders, cors, readBody } = require('./_shared.js')
+const { ANTHROPIC_API_URL, ANTHROPIC_VERSION, getSystemPrompt, sseHeaders, cors, readBody, requireAuth } = require('./_shared.js')
 
 module.exports = async function handler(req, res) {
   cors(res)
@@ -12,6 +12,8 @@ module.exports = async function handler(req, res) {
     res.status(405).json({ error: 'Method not allowed' })
     return
   }
+
+  if (!requireAuth(req, res)) return
 
   const body = await readBody(req)
   try {
@@ -44,7 +46,9 @@ module.exports = async function handler(req, res) {
       const errText = await claudeRes.text()
       let detail = ''
       try { detail = JSON.parse(errText).error?.message || errText.slice(0, 200) } catch { detail = errText.slice(0, 200) }
-      res.status(claudeRes.status).json({ error: `Claude API (${claudeRes.status}): ${detail}` })
+
+      // Return the upstream status so the client can classify the error (429 = rate limit, etc.)
+      res.status(claudeRes.status).json({ error: `Claude API (${claudeRes.status}): ${detail}`, status: claudeRes.status })
       return
     }
 

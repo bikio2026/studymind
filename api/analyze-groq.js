@@ -1,4 +1,4 @@
-const { GROQ_API_URL, getSystemPrompt, sseHeaders, cors, readBody } = require('./_shared.js')
+const { GROQ_API_URL, getSystemPrompt, sseHeaders, cors, readBody, requireAuth } = require('./_shared.js')
 
 module.exports = async function handler(req, res) {
   cors(res)
@@ -12,6 +12,8 @@ module.exports = async function handler(req, res) {
     res.status(405).json({ error: 'Method not allowed' })
     return
   }
+
+  if (!requireAuth(req, res)) return
 
   const body = await readBody(req)
   try {
@@ -45,7 +47,9 @@ module.exports = async function handler(req, res) {
       const errText = await groqRes.text()
       let detail = ''
       try { detail = JSON.parse(errText).error?.message || errText.slice(0, 200) } catch { detail = errText.slice(0, 200) }
-      res.status(groqRes.status).json({ error: `Groq API (${groqRes.status}): ${detail}` })
+
+      // Return the upstream status so the client can classify the error (429 = rate limit, etc.)
+      res.status(groqRes.status).json({ error: `Groq API (${groqRes.status}): ${detail}`, status: groqRes.status })
       return
     }
 

@@ -58,7 +58,20 @@ function sseHeaders(res) {
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-secret')
+}
+
+// Simple auth: verify x-api-secret header matches APP_SECRET env var
+// If APP_SECRET is not set, auth is disabled (dev mode)
+function requireAuth(req, res) {
+  const secret = process.env.APP_SECRET
+  if (!secret) return true // No secret configured → allow (dev)
+
+  const provided = req.headers['x-api-secret']
+  if (provided === secret) return true
+
+  res.status(403).json({ error: 'Acceso no autorizado. Verificá la configuración de APP_SECRET.' })
+  return false
 }
 
 function readBody(req) {
@@ -80,4 +93,5 @@ module.exports = {
   sseHeaders,
   cors,
   readBody,
+  requireAuth,
 }
