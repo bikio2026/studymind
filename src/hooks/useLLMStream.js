@@ -50,6 +50,7 @@ export function useLLMStream() {
       const decoder = new TextDecoder()
       let fullText = ''
       let buffer = ''
+      let doneCalled = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -67,16 +68,21 @@ export function useLLMStream() {
               fullText += json.token
               onToken?.(fullText, json.token)
             }
-            if (json.done) {
+            if (json.done && !doneCalled) {
+              doneCalled = true
               onDone?.(fullText)
             }
           } catch { /* skip */ }
         }
       }
 
-      // Ensure onDone is called even if no explicit done signal
-      if (fullText) {
-        onDone?.(fullText)
+      // Fallback: call onDone if stream ended without explicit done signal
+      if (!doneCalled) {
+        if (fullText) {
+          onDone?.(fullText)
+        } else {
+          throw new Error('El modelo no generó contenido. Probá con otro modelo o un PDF más corto.')
+        }
       }
 
       return fullText

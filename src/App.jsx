@@ -104,6 +104,13 @@ export default function App() {
     }
 
     await saveStructure(documentId, struct)
+
+    // Auto-suggest IA title as displayName
+    if (struct.title) {
+      const { renameDocument } = useDocumentStore.getState()
+      await renameDocument(documentId, struct.title)
+    }
+
     await generateGuides(documentId, doc, struct, llmConfig)
 
     const { updateDocumentStatus } = useDocumentStore.getState()
@@ -215,7 +222,7 @@ export default function App() {
           {activeDoc && (
             <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1 rounded-lg flex items-center gap-1.5 ml-2">
               <FileText className="w-3 h-3" />
-              {activeDoc.fileName}
+              {activeDoc.displayName || activeDoc.fileName}
               <span className="text-text-muted/60">({activeDoc.totalPages} pág.)</span>
             </span>
           )}

@@ -3,7 +3,7 @@ import { useDocumentStore } from '../stores/documentStore'
 import { getModelName } from '../lib/models'
 import {
   FileText, Upload, Trash2, Clock, BookOpen,
-  ChevronRight, AlertCircle, Loader2, Files, Cpu
+  ChevronRight, AlertCircle, Loader2, Files, Cpu, Pencil
 } from 'lucide-react'
 
 function formatDate(ts) {
@@ -26,14 +26,40 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function DocumentCard({ doc, onOpen, onDelete }) {
+function DocumentCard({ doc, onOpen, onDelete, onRename }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState('')
+  const inputRef = useRef(null)
   const isReady = doc.status === 'ready'
+
+  const displayName = doc.displayName || doc.fileName
+
+  const startEditing = (e) => {
+    e.stopPropagation()
+    setEditName(displayName)
+    setEditing(true)
+    setTimeout(() => inputRef.current?.select(), 0)
+  }
+
+  const saveEdit = () => {
+    const trimmed = editName.trim()
+    if (trimmed && trimmed !== doc.fileName) {
+      onRename(doc.id, trimmed)
+    } else if (!trimmed || trimmed === doc.fileName) {
+      onRename(doc.id, null) // reset to filename
+    }
+    setEditing(false)
+  }
+
+  const cancelEdit = () => {
+    setEditing(false)
+  }
 
   return (
     <div
       className="group relative rounded-xl border border-surface-light/40 bg-surface-alt/60 hover:bg-surface-alt hover:border-accent/30 transition-all duration-200 cursor-pointer"
-      onClick={() => onOpen(doc.id)}
+      onClick={() => !editing && onOpen(doc.id)}
       style={{ animationDelay: `${Math.random() * 0.1}s` }}
     >
       <div className="p-5">
@@ -57,10 +83,26 @@ function DocumentCard({ doc, onOpen, onDelete }) {
           </div>
         </div>
 
-        {/* File name */}
-        <h3 className="text-sm font-semibold text-text truncate mb-1 group-hover:text-accent transition-colors">
-          {doc.fileName}
-        </h3>
+        {/* File name / editable */}
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={saveEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveEdit()
+              if (e.key === 'Escape') cancelEdit()
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full text-sm font-semibold text-text bg-surface border border-accent/40 rounded-lg px-2 py-1 mb-1 outline-none focus:border-accent"
+            maxLength={100}
+          />
+        ) : (
+          <h3 className="text-sm font-semibold text-text truncate mb-1 group-hover:text-accent transition-colors" title={displayName}>
+            {displayName}
+          </h3>
+        )}
 
         {/* Model badge */}
         {doc.model && (
@@ -88,25 +130,35 @@ function DocumentCard({ doc, onOpen, onDelete }) {
 
       {/* Bottom action bar */}
       <div className="border-t border-surface-light/30 px-5 py-2.5 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            if (confirmDelete) {
-              onDelete(doc.id)
-            } else {
-              setConfirmDelete(true)
-              setTimeout(() => setConfirmDelete(false), 3000)
-            }
-          }}
-          className={`text-[11px] flex items-center gap-1 px-2 py-1 rounded transition-colors ${
-            confirmDelete
-              ? 'text-error bg-error/10 hover:bg-error/20'
-              : 'text-text-muted hover:text-error'
-          }`}
-        >
-          <Trash2 className="w-3 h-3" />
-          {confirmDelete ? 'Confirmar' : 'Eliminar'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              if (confirmDelete) {
+                onDelete(doc.id)
+              } else {
+                setConfirmDelete(true)
+                setTimeout(() => setConfirmDelete(false), 3000)
+              }
+            }}
+            className={`text-[11px] flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+              confirmDelete
+                ? 'text-error bg-error/10 hover:bg-error/20'
+                : 'text-text-muted hover:text-error'
+            }`}
+          >
+            <Trash2 className="w-3 h-3" />
+            {confirmDelete ? 'Confirmar' : 'Eliminar'}
+          </button>
+
+          <button
+            onClick={startEditing}
+            className="text-[11px] flex items-center gap-1 px-2 py-1 rounded text-text-muted hover:text-accent transition-colors"
+          >
+            <Pencil className="w-3 h-3" />
+            Renombrar
+          </button>
+        </div>
 
         <span className="text-[11px] text-accent flex items-center gap-1">
           Abrir <ChevronRight className="w-3 h-3" />
@@ -121,10 +173,11 @@ export default function Library({ onNewDocument }) {
   const loading = useDocumentStore(s => s.loading)
   const setActiveDocument = useDocumentStore(s => s.setActiveDocument)
   const deleteDocument = useDocumentStore(s => s.deleteDocument)
+  const renameDocument = useDocumentStore(s => s.renameDocument)
 
   const [dragging, setDragging] = useState(false)
   const [uploadError, setUploadError] = useState(null)
-  const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   const handleFile = (file) => {
     if (!file) return
@@ -161,7 +214,7 @@ export default function Library({ onNewDocument }) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh]">
         <div
-          onClick={() => inputRef.current?.click()}
+          onClick={() => fileInputRef.current?.click()}
           onDrop={handleDrop}
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
@@ -182,7 +235,7 @@ export default function Library({ onNewDocument }) {
             Libros de texto, apuntes, papers &mdash; cualquier PDF con texto
           </p>
           <input
-            ref={inputRef}
+            ref={fileInputRef}
             type="file"
             accept=".pdf"
             onChange={(e) => handleFile(e.target.files[0])}
@@ -234,14 +287,14 @@ export default function Library({ onNewDocument }) {
         </div>
 
         <button
-          onClick={() => inputRef.current?.click()}
+          onClick={() => fileInputRef.current?.click()}
           className="text-xs text-accent hover:text-accent/80 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent/20 hover:border-accent/40 hover:bg-accent-glow transition-all"
         >
           <Upload className="w-3.5 h-3.5" />
           Nuevo PDF
         </button>
         <input
-          ref={inputRef}
+          ref={fileInputRef}
           type="file"
           accept=".pdf"
           onChange={(e) => handleFile(e.target.files[0])}
@@ -260,7 +313,7 @@ export default function Library({ onNewDocument }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {/* Upload card */}
         <div
-          onClick={() => inputRef.current?.click()}
+          onClick={() => fileInputRef.current?.click()}
           onDrop={handleDrop}
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
@@ -283,6 +336,7 @@ export default function Library({ onNewDocument }) {
             doc={doc}
             onOpen={setActiveDocument}
             onDelete={deleteDocument}
+            onRename={renameDocument}
           />
         ))}
       </div>

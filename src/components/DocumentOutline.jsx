@@ -1,7 +1,10 @@
-import { BookOpen, CheckCircle, Circle, ChevronRight } from 'lucide-react'
+import { BookOpen, CheckCircle, Circle, ChevronRight, HelpCircle } from 'lucide-react'
+import { useProgressStore } from '../stores/progressStore'
 
-export default function DocumentOutline({ structure, topics, activeTopic, onSelectTopic }) {
+export default function DocumentOutline({ structure, topics, activeTopic, onSelectTopic, documentId }) {
   if (!structure) return null
+
+  const progress = useProgressStore(s => s.progress)
 
   const getTopicData = (sectionId) => topics.find(t => t.id === sectionId)
 
@@ -11,10 +14,14 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
     return 'text-detail'
   }
 
-  const studied = topics.filter(t => t.studied).length
-  const quizzed = topics.filter(t => t.quizScore !== null)
-  const avgScore = quizzed.length > 0
-    ? Math.round(quizzed.reduce((sum, t) => sum + t.quizScore, 0) / quizzed.length)
+  // Calculate stats from progressStore (not from topic objects)
+  const studied = topics.filter(t => progress[t.id]?.studied).length
+  const quizzedScores = topics
+    .map(t => progress[t.id]?.quizScores)
+    .filter(scores => scores && scores.length > 0)
+    .map(scores => scores[scores.length - 1].score)
+  const avgScore = quizzedScores.length > 0
+    ? Math.round(quizzedScores.reduce((sum, s) => sum + s, 0) / quizzedScores.length)
     : null
 
   return (
@@ -49,7 +56,7 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
               `}
             >
               <div className="flex items-center gap-2">
-                {topic?.studied ? (
+                {progress[section.id]?.studied ? (
                   <CheckCircle className="w-3.5 h-3.5 text-success shrink-0" />
                 ) : isGenerated ? (
                   <Circle className={`w-3.5 h-3.5 shrink-0 ${relevanceColor(topic?.relevance)}`} />
@@ -57,6 +64,11 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
                   <Circle className="w-3.5 h-3.5 text-text-muted/20 shrink-0" />
                 )}
                 <span className="truncate">{section.title}</span>
+                {!isGenerated && (
+                  <span className="ml-auto shrink-0" title="Sin texto suficiente para generar guía">
+                    <HelpCircle className="w-3 h-3 text-text-muted/30" />
+                  </span>
+                )}
                 {isActive && <ChevronRight className="w-3 h-3 ml-auto shrink-0 text-accent" />}
               </div>
             </button>

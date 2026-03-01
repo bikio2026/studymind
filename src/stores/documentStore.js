@@ -44,6 +44,18 @@ export const useDocumentStore = create((set, get) => ({
     }))
   },
 
+  // Rename document
+  renameDocument: async (id, displayName) => {
+    const doc = await db.getDocument(id)
+    if (doc) {
+      doc.displayName = displayName || null
+      await db.saveDocument(doc)
+      set(state => ({
+        documents: state.documents.map(d => d.id === id ? { ...d, displayName: displayName || null } : d),
+      }))
+    }
+  },
+
   // Set active document (opens study view)
   setActiveDocument: (id) => set({ activeDocumentId: id }),
 

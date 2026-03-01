@@ -33,6 +33,7 @@ export default function StudyGuide({ structure, topics, documentId }) {
         topics={topics}
         activeTopic={activeTopic}
         onSelectTopic={setActiveTopic}
+        documentId={documentId}
       />
 
       {/* Main content */}
