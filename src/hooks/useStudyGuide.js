@@ -43,7 +43,7 @@ function isValidSectionText(text) {
 }
 
 export function useStudyGuide() {
-  const { streamRequest } = useLLMStream()
+  const { streamRequest, cancel: cancelStream } = useLLMStream()
   const cancelledRef = useRef(false)
 
   // Pull state from Zustand store
@@ -61,7 +61,7 @@ export function useStudyGuide() {
   const addTopic = useStudyStore(s => s.addTopic)
   const reset = useStudyStore(s => s.reset)
 
-  const generateGuides = useCallback(async (documentId, document, structure, { provider, model }) => {
+  const generateGuides = useCallback(async (documentId, document, structure, { provider, model }, skipIds = new Set()) => {
     setPhase('generating')
     cancelledRef.current = false
 
@@ -94,6 +94,13 @@ export function useStudyGuide() {
       if (cancelledRef.current) break
 
       const section = sections[i]
+
+      // Skip already-generated topics (for resume)
+      if (skipIds.has(section.id)) {
+        setProgress({ current: i + 1, total: sections.length })
+        continue
+      }
+
       setGeneratingTopic(section.title)
       setProgress({ current: i, total: sections.length })
 
@@ -169,18 +176,31 @@ export function useStudyGuide() {
           await addTopic(documentId, topic)
         }
       } catch (err) {
+        if (err.name === 'AbortError' || cancelledRef.current) {
+          console.log(`[StudyMind] Generation cancelled at "${section.title}"`)
+          break
+        }
         console.error(`Error generando guía para "${section.title}":`, err)
       }
     }
 
-    setProgress({ current: sections.length, total: sections.length })
+    const completed = !cancelledRef.current
     setGeneratingTopic(null)
-    setPhase('ready')
+
+    if (completed) {
+      setProgress({ current: sections.length, total: sections.length })
+      setPhase('ready')
+    } else {
+      setPhase('stopped')
+    }
+
+    return { completed, total: sections.length }
   }, [streamRequest, setPhase, setGeneratingTopic, setProgress, addTopic])
 
   const cancelGeneration = useCallback(() => {
     cancelledRef.current = true
-  }, [])
+    cancelStream() // Abort in-flight HTTP request immediately
+  }, [cancelStream])
 
   // Generate a single section (for regeneration)
   const regenerateSection = useCallback(async (documentId, document, structure, sectionId, { provider, model }) => {

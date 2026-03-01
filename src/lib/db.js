@@ -1,12 +1,13 @@
 // IndexedDB wrapper for StudyMind persistence
 const DB_NAME = 'studymind'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 const STORES = {
   documents: 'documents',
   structures: 'structures',
   topics: 'topics',
   progress: 'progress',
+  pageData: 'pageData',
 }
 
 let dbInstance = null
@@ -41,6 +42,12 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORES.progress)) {
         const progressStore = db.createObjectStore(STORES.progress, { keyPath: 'id' })
         progressStore.createIndex('documentId', 'documentId', { unique: false })
+      }
+
+      // pageData: {documentId, pages[], tocText?, pageRange?, provider, model}
+      // Stored separately from documents to keep Library loading fast
+      if (!db.objectStoreNames.contains(STORES.pageData)) {
+        db.createObjectStore(STORES.pageData, { keyPath: 'documentId' })
       }
     }
 
@@ -155,11 +162,12 @@ export const db = {
   },
 
   async deleteDocument(id) {
-    // Cascade: delete structure, topics, progress
+    // Cascade: delete structure, topics, progress, pageData
     await deleteByKey(STORES.documents, id)
     await deleteByKey(STORES.structures, id)
     await deleteByIndex(STORES.topics, 'documentId', id)
     await deleteByIndex(STORES.progress, 'documentId', id)
+    await deleteByKey(STORES.pageData, id)
   },
 
   // Structures
@@ -193,5 +201,14 @@ export const db = {
   async saveProgress(documentId, topicId, data) {
     const id = `${documentId}_${topicId}`
     return put(STORES.progress, { id, documentId, topicId, ...data })
+  },
+
+  // Page data (for resume processing)
+  async savePageData(documentId, data) {
+    return put(STORES.pageData, { documentId, ...data })
+  },
+
+  async getPageData(documentId) {
+    return getByKey(STORES.pageData, documentId)
   },
 }

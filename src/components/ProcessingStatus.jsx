@@ -1,4 +1,4 @@
-import { Loader, CheckCircle, BookOpen, Brain, Sparkles } from 'lucide-react'
+import { Loader, CheckCircle, BookOpen, Brain, Sparkles, Square } from 'lucide-react'
 
 const PHASES = [
   { key: 'parsing', label: 'Extrayendo texto del PDF', icon: BookOpen },
@@ -6,7 +6,7 @@ const PHASES = [
   { key: 'generating', label: 'Generando guías de estudio', icon: Sparkles },
 ]
 
-export default function ProcessingStatus({ phase, progress, generatingTopic }) {
+export default function ProcessingStatus({ phase, progress, generatingTopic, onStop }) {
   const currentIdx = PHASES.findIndex(p => p.key === phase)
   if (currentIdx === -1) return null
 
@@ -45,9 +45,21 @@ export default function ProcessingStatus({ phase, progress, generatingTopic }) {
 
         {/* Current topic name */}
         {generatingTopic && (
-          <p className="text-text-dim text-sm animate-pulse-soft mb-8">
+          <p className="text-text-dim text-sm animate-pulse-soft mb-4">
             Procesando: <span className="text-text">{generatingTopic}</span>
           </p>
+        )}
+
+        {/* Stop button — only during generating phase */}
+        {phase === 'generating' && onStop && (
+          <button
+            onClick={onStop}
+            className="flex items-center gap-2 text-xs text-text-muted hover:text-error px-3 py-2 rounded-lg
+              border border-surface-light hover:border-error/30 hover:bg-error/5 transition-all mb-4"
+          >
+            <Square className="w-3 h-3" />
+            Detener procesamiento
+          </button>
         )}
 
         {/* Pipeline steps */}

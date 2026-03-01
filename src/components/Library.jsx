@@ -32,6 +32,7 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
   const [editName, setEditName] = useState('')
   const inputRef = useRef(null)
   const isReady = doc.status === 'ready'
+  const isIncomplete = doc.status === 'incomplete'
 
   const displayName = doc.displayName || doc.fileName
 
@@ -73,6 +74,11 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
             {isReady ? (
               <span className="text-[10px] font-medium text-success bg-success/10 px-2 py-0.5 rounded-full">
                 Listo
+              </span>
+            ) : isIncomplete ? (
+              <span className="text-[10px] font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <AlertCircle className="w-2.5 h-2.5" />
+                Incompleto
               </span>
             ) : (
               <span className="text-[10px] font-medium text-warning bg-warning/10 px-2 py-0.5 rounded-full flex items-center gap-1">

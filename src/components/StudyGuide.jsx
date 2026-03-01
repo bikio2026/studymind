@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import TopicCard from './TopicCard'
 import RelevanceFilter from './RelevanceFilter'
 import DocumentOutline from './DocumentOutline'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2 } from 'lucide-react'
 
-export default function StudyGuide({ structure, topics, documentId }) {
+export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming }) {
   const [activeTopic, setActiveTopic] = useState(null)
   const [filter, setFilter] = useState('all')
 
@@ -25,6 +25,9 @@ export default function StudyGuide({ structure, topics, documentId }) {
   const prevTopic = currentIdx > 0 ? filteredTopics[currentIdx - 1] : null
   const nextTopic = currentIdx < filteredTopics.length - 1 ? filteredTopics[currentIdx + 1] : null
 
+  const totalSections = structure.sections.filter(s => s.level <= 2).length
+  const isIncomplete = documentStatus === 'incomplete'
+
   return (
     <div className="flex gap-4 h-[calc(100vh-120px)]">
       {/* Sidebar */}
@@ -38,6 +41,37 @@ export default function StudyGuide({ structure, topics, documentId }) {
 
       {/* Main content */}
       <div className="flex-1 overflow-y-auto pr-2">
+        {/* Incomplete banner */}
+        {isIncomplete && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/5 border border-amber-500/15 animate-fadeIn">
+            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+            <span className="text-sm text-text-dim flex-1">
+              Documento incompleto: {topics.length} de {totalSections} temas generados
+            </span>
+            {onResume && (
+              <button
+                onClick={onResume}
+                disabled={resuming}
+                className="flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent/80
+                  px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/15 border border-accent/20
+                  transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                {resuming ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Procesando...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3 h-3" />
+                    Continuar procesando
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="flex items-center justify-between mb-4 sticky top-0 bg-surface/95 backdrop-blur-sm py-3 z-10 -mt-1">
           <RelevanceFilter active={filter} onChange={setFilter} />

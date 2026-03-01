@@ -4,7 +4,7 @@ import { db } from '../lib/db'
 export const useStudyStore = create((set, get) => ({
   structure: null,
   topics: [],
-  phase: 'idle', // idle | parsing | analyzing | generating | ready
+  phase: 'idle', // idle | parsing | analyzing | generating | stopped | ready
   generatingTopic: null,
   progress: { current: 0, total: 0 },
   error: null,

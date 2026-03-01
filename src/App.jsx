@@ -14,6 +14,8 @@ import StudyGuide from './components/StudyGuide'
 import Library from './components/Library'
 import DuplicateDialog from './components/DuplicateDialog'
 import PageRangeDialog from './components/PageRangeDialog'
+import StopDialog from './components/StopDialog'
+import CancelConfirmDialog from './components/CancelConfirmDialog'
 import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu } from 'lucide-react'
 
 async function computeContentHash(fullText, totalPages) {
@@ -28,13 +30,15 @@ export default function App() {
   const { analyzing, error: structureError, analyzeStructure } = useDocumentAnalysis()
   const {
     phase, setPhase, topics, generatingTopic, progress: genProgress,
-    error: guideError, generateGuides, reset: resetGuide
+    error: guideError, generateGuides, cancelGeneration, reset: resetGuide
   } = useStudyGuide()
   const { status, checkHealth } = useLLMStream()
 
   // Dialog states
-  const [duplicateInfo, setDuplicateInfo] = useState(null) // { existingDocs, parsedDoc, contentHash }
-  const [pageRangeInfo, setPageRangeInfo] = useState(null) // { parsedDoc, contentHash }
+  const [duplicateInfo, setDuplicateInfo] = useState(null)
+  const [pageRangeInfo, setPageRangeInfo] = useState(null)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [resuming, setResuming] = useState(false)
 
   // Zustand stores
   const activeDocumentId = useDocumentStore(s => s.activeDocumentId)
@@ -49,10 +53,22 @@ export default function App() {
 
   const loadProgress = useProgressStore(s => s.loadProgress)
 
-  // Load library and check health on mount
+  // Load library, check health, and fix stale processing docs on mount
   useEffect(() => {
-    loadDocuments()
-    checkHealth()
+    const init = async () => {
+      await loadDocuments()
+      checkHealth()
+
+      // Auto-detect stale 'processing' documents → mark as 'incomplete'
+      const { documents, updateDocumentStatus } = useDocumentStore.getState()
+      for (const doc of documents) {
+        if (doc.status === 'processing') {
+          console.log(`[StudyMind] Stale doc detected: "${doc.displayName || doc.fileName}" → marking as incomplete`)
+          await updateDocumentStatus(doc.id, 'incomplete')
+        }
+      }
+    }
+    init()
   }, [loadDocuments, checkHealth])
 
   // When a document is activated, try to load from IDB cache
@@ -91,6 +107,15 @@ export default function App() {
     await saveDocument(docRecord)
     setActiveDocument(documentId)
 
+    // Save page data for resume capability
+    await db.savePageData(documentId, {
+      pages: doc.pages,
+      tocText: doc.tocText || null,
+      pageRange: doc.pageRange || null,
+      provider: config.provider,
+      model: config.model,
+    })
+
     setPhase('analyzing')
     const struct = await analyzeStructure(doc, config)
     if (!struct) {
@@ -106,10 +131,14 @@ export default function App() {
       await renameDocument(documentId, struct.title)
     }
 
-    await generateGuides(documentId, doc, struct, config)
+    const result = await generateGuides(documentId, doc, struct, config)
 
-    const { updateDocumentStatus } = useDocumentStore.getState()
-    await updateDocumentStatus(documentId, 'ready')
+    // Only mark as 'ready' if generation completed (not cancelled)
+    if (result?.completed) {
+      const { updateDocumentStatus } = useDocumentStore.getState()
+      await updateDocumentStatus(documentId, 'ready')
+    }
+    // If cancelled, phase is 'stopped' — StopDialog handles the rest
   }, [analyzeStructure, generateGuides, setPhase, saveDocument, setActiveDocument, saveStructure])
 
   // Show page range dialog for a parsed doc
@@ -148,7 +177,6 @@ export default function App() {
     if (!duplicateInfo) return
     const { parsedDoc: doc, contentHash } = duplicateInfo
     setDuplicateInfo(null)
-    // After dedup proceed, show page range dialog
     showPageRangeDialog(doc, contentHash)
   }, [duplicateInfo, showPageRangeDialog])
 
@@ -171,7 +199,6 @@ export default function App() {
     const isFullRange = startPage === 1 && endPage === doc.totalPages
 
     // For partial ranges, extend start backward to capture chapter beginnings
-    // (e.g., user picks page 60 but chapter starts at page 57)
     const CONTEXT_BUFFER = 10
     const effectiveStart = isFullRange ? startPage : Math.max(1, startPage - CONTEXT_BUFFER)
 
@@ -182,8 +209,8 @@ export default function App() {
     // Filter pages to extended range and re-index page numbers
     const filteredPages = doc.pages.slice(effectiveStart - 1, endPage).map((page, i) => ({
       ...page,
-      pageNumber: i + 1, // Re-index 1-based relative to filtered range
-      originalPageNumber: page.pageNumber, // Preserve original for reference
+      pageNumber: i + 1,
+      originalPageNumber: page.pageNumber,
     }))
     const filteredDoc = {
       ...doc,
@@ -192,7 +219,6 @@ export default function App() {
       totalPages: filteredPages.length,
       ...(isFullRange ? {} : {
         originalTotalPages: doc.totalPages,
-        // pageRange reflects user's original selection (for prompt context)
         pageRange: { start: startPage, end: endPage, originalTotal: doc.totalPages },
       }),
     }
@@ -200,12 +226,10 @@ export default function App() {
     // TOC detection for partial ranges
     if (!isFullRange && tocConfig.mode !== 'none') {
       if (tocConfig.mode === 'manual' && tocConfig.start && tocConfig.end) {
-        // User specified TOC pages manually
         const manualPages = doc.pages.slice(tocConfig.start - 1, tocConfig.end)
         filteredDoc.tocText = manualPages.map(p => p.text).join('\n\n')
         console.log(`[StudyMind] TOC manual: pages ${tocConfig.start}-${tocConfig.end} (${manualPages.length} pages)`)
       } else {
-        // Auto-detect TOC from full PDF
         const tocResult = detectTOCPages(doc.pages)
         if (tocResult.hasTOC) {
           filteredDoc.tocText = extractTOCTextFromRegions(tocResult)
@@ -222,11 +246,94 @@ export default function App() {
     resetParser()
   }, [resetParser])
 
-  const handleBackToLibrary = () => {
+  // Stop processing
+  const handleStopProcessing = useCallback(() => {
+    cancelGeneration()
+    // The generateGuides promise will resolve with completed=false,
+    // setting phase to 'stopped', which triggers StopDialog
+  }, [cancelGeneration])
+
+  // Stop dialog: keep partial results
+  const handleStopKeep = useCallback(async () => {
+    if (!activeDocumentId) return
+    const { updateDocumentStatus } = useDocumentStore.getState()
+    await updateDocumentStatus(activeDocumentId, 'incomplete')
+    setPhase('ready')
+  }, [activeDocumentId, setPhase])
+
+  // Stop dialog: delete everything
+  const handleStopDelete = useCallback(async () => {
+    if (!activeDocumentId) return
+    const { deleteDocument } = useDocumentStore.getState()
+    await deleteDocument(activeDocumentId)
     resetParser()
     resetGuide()
     clearActiveDocument()
-  }
+  }, [activeDocumentId, resetParser, resetGuide, clearActiveDocument])
+
+  // Navigate back (with confirmation if processing)
+  const handleBackToLibrary = useCallback(() => {
+    const isProcessing = parsing || analyzing || phase === 'generating'
+    if (isProcessing) {
+      setShowCancelConfirm(true)
+      return
+    }
+    resetParser()
+    resetGuide()
+    clearActiveDocument()
+  }, [parsing, analyzing, phase, resetParser, resetGuide, clearActiveDocument])
+
+  // Cancel confirm: yes
+  const handleCancelConfirmed = useCallback(() => {
+    setShowCancelConfirm(false)
+    handleStopProcessing()
+  }, [handleStopProcessing])
+
+  // Resume processing for incomplete documents
+  const handleResumeProcessing = useCallback(async () => {
+    if (!activeDocumentId || !structure) return
+
+    setResuming(true)
+    try {
+      // Load page data from IDB
+      const pageData = await db.getPageData(activeDocumentId)
+      if (!pageData) {
+        console.error('[StudyMind] Cannot resume: no page data found')
+        setResuming(false)
+        return
+      }
+
+      // Reconstruct document object for generateGuides
+      const docRecord = await db.getDocument(activeDocumentId)
+      const doc = {
+        pages: pageData.pages,
+        fullText: docRecord.fullText,
+        totalPages: docRecord.totalPages,
+        tocText: pageData.tocText,
+        pageRange: pageData.pageRange,
+      }
+
+      // Get existing topic IDs to skip
+      const existingTopicIds = new Set(topics.map(t => t.id))
+      console.log(`[StudyMind] Resume: ${existingTopicIds.size} topics already generated, skipping`)
+
+      const config = {
+        provider: pageData.provider || docRecord.provider,
+        model: pageData.model || docRecord.model,
+      }
+
+      const result = await generateGuides(activeDocumentId, doc, structure, config, existingTopicIds)
+
+      if (result?.completed) {
+        const { updateDocumentStatus } = useDocumentStore.getState()
+        await updateDocumentStatus(activeDocumentId, 'ready')
+      }
+    } catch (err) {
+      console.error('[StudyMind] Resume error:', err)
+    } finally {
+      setResuming(false)
+    }
+  }, [activeDocumentId, structure, topics, generateGuides])
 
   // Determine current visual phase
   const currentPhase = parsing ? 'parsing'
@@ -314,7 +421,7 @@ export default function App() {
               )}
             </span>
           )}
-          {currentPhase !== 'idle' && currentPhase !== 'ready' && (
+          {currentPhase !== 'idle' && currentPhase !== 'ready' && currentPhase !== 'stopped' && (
             <button
               onClick={handleBackToLibrary}
               className="text-xs text-text-muted hover:text-text flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-surface-alt transition-colors border border-transparent hover:border-surface-light"
@@ -348,6 +455,17 @@ export default function App() {
           phase={currentPhase}
           progress={currentPhase === 'parsing' ? parseProgress : genProgress}
           generatingTopic={generatingTopic}
+          onStop={currentPhase === 'generating' ? handleStopProcessing : undefined}
+        />
+      )}
+
+      {/* Stop dialog — shown when generation is cancelled */}
+      {currentPhase === 'stopped' && (
+        <StopDialog
+          generated={topics.length}
+          total={genProgress?.total || 0}
+          onKeep={handleStopKeep}
+          onDelete={handleStopDelete}
         />
       )}
 
@@ -357,6 +475,17 @@ export default function App() {
           structure={structure}
           topics={topics}
           documentId={activeDocumentId}
+          documentStatus={activeDoc?.status}
+          onResume={activeDoc?.status === 'incomplete' ? handleResumeProcessing : undefined}
+          resuming={resuming}
+        />
+      )}
+
+      {/* Cancel confirmation dialog */}
+      {showCancelConfirm && (
+        <CancelConfirmDialog
+          onConfirm={handleCancelConfirmed}
+          onDismiss={() => setShowCancelConfirm(false)}
         />
       )}
     </div>
