@@ -14,7 +14,9 @@ export function useDocumentAnalysis() {
     setError(null)
 
     try {
-      const sampledText = getSampledText(document.pages)
+      // Use less text for Groq to stay within free tier TPM limits (12K tokens/min)
+      const maxTokens = provider === 'groq' ? 2500 : 8000
+      const sampledText = getSampledText(document.pages, maxTokens)
       const prompt = buildStructurePrompt(sampledText, document.totalPages)
 
       let fullText = ''
@@ -28,11 +30,24 @@ export function useDocumentAnalysis() {
         onError: (err) => { throw new Error(err) },
       })
 
-      // Parse JSON from response
-      const jsonMatch = fullText.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error('No se detectó estructura válida en la respuesta')
+      // Strip markdown code blocks (some models wrap JSON in ```json ... ```)
+      let cleaned = fullText.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '')
 
-      const parsed = JSON.parse(jsonMatch[0])
+      // Parse JSON from response
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        console.error('[StudyMind] Raw LLM response (first 500 chars):', fullText.slice(0, 500))
+        throw new Error('No se detectó estructura válida. Intentá con otro modelo.')
+      }
+
+      let parsed
+      try {
+        parsed = JSON.parse(jsonMatch[0])
+      } catch (parseErr) {
+        console.error('[StudyMind] JSON parse error:', parseErr.message)
+        console.error('[StudyMind] Extracted JSON (first 300 chars):', jsonMatch[0].slice(0, 300))
+        throw new Error('La respuesta del modelo no es JSON válido. Intentá de nuevo.')
+      }
 
       // Ensure sections have sequential ids
       if (parsed.sections) {

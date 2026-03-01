@@ -182,8 +182,12 @@ export default function App() {
 
     const isFullRange = startPage === 1 && endPage === doc.totalPages
 
-    // Filter pages to selected range
-    const filteredPages = doc.pages.slice(startPage - 1, endPage)
+    // Filter pages to selected range and re-index page numbers
+    const filteredPages = doc.pages.slice(startPage - 1, endPage).map((page, i) => ({
+      ...page,
+      pageNumber: i + 1, // Re-index 1-based relative to filtered range
+      originalPageNumber: page.pageNumber, // Preserve original for reference
+    }))
     const filteredDoc = {
       ...doc,
       pages: filteredPages,

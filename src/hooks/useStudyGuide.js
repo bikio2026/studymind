@@ -30,7 +30,7 @@ function isNonContentSection(title) {
 
 // Validate that extracted text is real content (not TOC, page numbers, etc.)
 function isValidSectionText(text) {
-  if (!text || text.length < 200) return false
+  if (!text || text.length < 100) return false
 
   // Detect TOC-like text (high ratio of short numbers = page references)
   const pageNumberPattern = /\b\d{1,3}\b/g

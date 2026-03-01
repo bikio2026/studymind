@@ -239,6 +239,10 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(groqRes.status, { 'Content-Type': 'application/json' })
         let detail = ''
         try { detail = JSON.parse(errText).error?.message || errText.slice(0, 200) } catch { detail = errText.slice(0, 200) }
+        // Friendly message for free tier TPM limit
+        if (groqRes.status === 413 || (detail && detail.includes('too large'))) {
+          detail = 'El texto es demasiado largo para el tier gratuito de Groq (límite 12K tokens/min). Probá con un rango de páginas más corto o usá Claude.'
+        }
         res.end(JSON.stringify({ error: `Groq API (${groqRes.status}): ${detail}` }))
         return
       }

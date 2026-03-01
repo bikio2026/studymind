@@ -2,27 +2,33 @@ import { useState } from 'react'
 import { FileText, Scissors, X } from 'lucide-react'
 
 export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCancel }) {
-  const [startPage, setStartPage] = useState(1)
-  const [endPage, setEndPage] = useState(totalPages)
+  // Raw string state — allows clearing fields and typing freely
+  const [startRaw, setStartRaw] = useState('1')
+  const [endRaw, setEndRaw] = useState(String(totalPages))
+
+  // Derived numeric values (used for validation and display)
+  const startPage = parseInt(startRaw) || 0
+  const endPage = parseInt(endRaw) || 0
 
   const pageCount = Math.max(0, endPage - startPage + 1)
   const isFullRange = startPage === 1 && endPage === totalPages
-  const isValid = startPage >= 1 && endPage <= totalPages && startPage <= endPage
+  const isValid = startPage >= 1 && endPage <= totalPages && startPage <= endPage && startRaw !== '' && endRaw !== ''
 
   const handleConfirm = () => {
     if (isValid) onConfirm(startPage, endPage)
   }
 
-  const clampStart = (val) => {
-    const n = Math.max(1, Math.min(val, totalPages))
-    setStartPage(n)
-    if (n > endPage) setEndPage(n)
+  // Clamp values on blur (not on every keystroke)
+  const handleStartBlur = () => {
+    const n = Math.max(1, Math.min(parseInt(startRaw) || 1, totalPages))
+    setStartRaw(String(n))
+    if (n > (parseInt(endRaw) || totalPages)) setEndRaw(String(n))
   }
 
-  const clampEnd = (val) => {
-    const n = Math.max(1, Math.min(val, totalPages))
-    setEndPage(n)
-    if (n < startPage) setStartPage(n)
+  const handleEndBlur = () => {
+    const n = Math.max(1, Math.min(parseInt(endRaw) || totalPages, totalPages))
+    setEndRaw(String(n))
+    if (n < (parseInt(startRaw) || 1)) setStartRaw(String(n))
   }
 
   return (
@@ -62,8 +68,9 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
                 type="number"
                 min={1}
                 max={totalPages}
-                value={startPage}
-                onChange={(e) => clampStart(parseInt(e.target.value) || 1)}
+                value={startRaw}
+                onChange={(e) => setStartRaw(e.target.value)}
+                onBlur={handleStartBlur}
                 className="w-full px-3 py-2 rounded-lg bg-surface-alt border border-surface-light
                   text-text text-center text-lg font-mono focus:outline-none focus:border-accent
                   transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -76,8 +83,9 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
                 type="number"
                 min={1}
                 max={totalPages}
-                value={endPage}
-                onChange={(e) => clampEnd(parseInt(e.target.value) || totalPages)}
+                value={endRaw}
+                onChange={(e) => setEndRaw(e.target.value)}
+                onBlur={handleEndBlur}
                 className="w-full px-3 py-2 rounded-lg bg-surface-alt border border-surface-light
                   text-text text-center text-lg font-mono focus:outline-none focus:border-accent
                   transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -88,14 +96,14 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
           {/* Quick presets */}
           <div className="flex gap-2 mt-3">
             <button
-              onClick={() => { setStartPage(1); setEndPage(totalPages) }}
+              onClick={() => { setStartRaw('1'); setEndRaw(String(totalPages)) }}
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                 ${isFullRange ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
             >
               Todo
             </button>
             <button
-              onClick={() => { setStartPage(1); setEndPage(Math.min(50, totalPages)) }}
+              onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(50, totalPages))) }}
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                 ${startPage === 1 && endPage === Math.min(50, totalPages) ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
             >
@@ -103,7 +111,7 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
             </button>
             {totalPages > 100 && (
               <button
-                onClick={() => { setStartPage(1); setEndPage(Math.min(100, totalPages)) }}
+                onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(100, totalPages))) }}
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                   ${startPage === 1 && endPage === Math.min(100, totalPages) ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
               >
@@ -112,7 +120,7 @@ export default function PageRangeDialog({ fileName, totalPages, onConfirm, onCan
             )}
             {totalPages > 200 && (
               <button
-                onClick={() => { setStartPage(1); setEndPage(Math.min(150, totalPages)) }}
+                onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(150, totalPages))) }}
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                   ${startPage === 1 && endPage === Math.min(150, totalPages) ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
               >
