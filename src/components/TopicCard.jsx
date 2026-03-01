@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle } from 'lucide-react'
 import QuizSection from './QuizSection'
+import ChatSection from './ChatSection'
 import { useProgressStore } from '../stores/progressStore'
 
 const RELEVANCE = {
@@ -33,11 +34,12 @@ function CollapsibleSection({ title, icon: Icon, expanded, onToggle, children })
   )
 }
 
-export default function TopicCard({ topic, documentId, bookPage }) {
+export default function TopicCard({ topic, documentId, bookPage, provider }) {
   const [expandedSections, setExpandedSections] = useState({
     explanation: false,
     connections: false,
     quiz: false,
+    chat: false,
   })
 
   const topicProgress = useProgressStore(s => s.progress[topic.id])
@@ -163,6 +165,20 @@ export default function TopicCard({ topic, documentId, bookPage }) {
           />
         </CollapsibleSection>
       )}
+
+      {/* Expandable: Chat (Socratic Tutor) */}
+      <CollapsibleSection
+        title="Tutor Socrático"
+        icon={MessageCircle}
+        expanded={expandedSections.chat}
+        onToggle={() => toggle('chat')}
+      >
+        <ChatSection
+          topic={topic}
+          documentId={documentId}
+          provider={provider}
+        />
+      </CollapsibleSection>
     </div>
   )
 }

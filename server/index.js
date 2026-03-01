@@ -46,6 +46,20 @@ REGLAS ESTRICTAS:
 
   summary: `Sos un tutor experto que sintetiza textos académicos. Español rioplatense, didáctico.
 Respondé en texto plano, sin markdown. Priorizá comprensión conceptual sobre detalles.`,
+
+  chat: `Sos un tutor socrático experto en el tema que se te presenta. Tu rol es GUIAR al estudiante a pensar, no darle respuestas directas.
+
+REGLAS:
+- Respondé en español rioplatense, claro y accesible.
+- Usá el método socrático: ante una pregunta, respondé con otra pregunta que guíe al estudiante a descubrir la respuesta por sí mismo.
+- Si el estudiante está muy perdido (después de 2-3 intercambios sin avance), podés dar una pista más directa, pero nunca la respuesta completa de entrada.
+- Si el estudiante te pide explícitamente la respuesta ("decime la respuesta", "no entiendo nada"), podés ser más directo pero siempre explicando el razonamiento, no solo el dato.
+- Basá tus respuestas EXCLUSIVAMENTE en el contexto del tema que se te proporciona. No inventes información que no esté en el material.
+- Respuestas cortas y focalizadas (2-4 oraciones). No des clases magistrales.
+- Si el estudiante pregunta algo fuera del tema, redirigilo amablemente al contenido de la sección.
+- Podés usar analogías y ejemplos cotidianos para clarificar conceptos.
+- Usá formato de texto plano. Nada de markdown, listas ni encabezados.
+- Nunca empezás con "¡Buena pregunta!" ni frases condescendientes similares.`,
 }
 
 function getSystemPrompt(version) {
@@ -117,7 +131,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/api/analyze-claude' && req.method === 'POST') {
     const body = await readBody(req)
     try {
-      const { prompt, model = 'claude-haiku-4-5-20251001', promptVersion = 'structure', maxTokens = 4096 } = JSON.parse(body)
+      const { prompt, messages: inputMessages, model = 'claude-haiku-4-5-20251001', promptVersion = 'structure', maxTokens = 4096 } = JSON.parse(body)
       const systemPrompt = getSystemPrompt(promptVersion)
       const apiKey = process.env.ANTHROPIC_API_KEY
 
@@ -139,7 +153,7 @@ const server = http.createServer(async (req, res) => {
           max_tokens: Math.min(maxTokens, 8192),
           stream: true,
           system: systemPrompt,
-          messages: [{ role: 'user', content: prompt }],
+          messages: inputMessages || [{ role: 'user', content: prompt }],
         }),
       })
 
@@ -200,7 +214,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/api/analyze-groq' && req.method === 'POST') {
     const body = await readBody(req)
     try {
-      const { prompt, model = 'llama-3.3-70b-versatile', promptVersion = 'structure', maxTokens = 4096 } = JSON.parse(body)
+      const { prompt, messages: inputMessages, model = 'llama-3.3-70b-versatile', promptVersion = 'structure', maxTokens = 4096 } = JSON.parse(body)
       const systemPrompt = getSystemPrompt(promptVersion)
       const apiKey = process.env.GROQ_API_KEY
 
@@ -210,8 +224,8 @@ const server = http.createServer(async (req, res) => {
         return
       }
 
-      console.log(`[Groq] Request: model=${model}, promptVersion=${promptVersion}, maxTokens=${maxTokens}, promptLength=${prompt.length}`)
-      console.log(`[Groq] API Key: ${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`)
+      const promptLen = prompt ? prompt.length : (inputMessages ? JSON.stringify(inputMessages).length : 0)
+      console.log(`[Groq] Request: model=${model}, promptVersion=${promptVersion}, maxTokens=${maxTokens}, promptLength=${promptLen}`)
 
       const groqRes = await fetch(GROQ_API_URL, {
         method: 'POST',
@@ -223,10 +237,9 @@ const server = http.createServer(async (req, res) => {
           model,
           max_tokens: Math.min(maxTokens, 8192),
           stream: true,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt },
-          ],
+          messages: inputMessages
+            ? [{ role: 'system', content: systemPrompt }, ...inputMessages]
+            : [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
         }),
       })
 

@@ -7,6 +7,9 @@ import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2 } from 'lucide-react'
 export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming }) {
   const [activeTopic, setActiveTopic] = useState(null)
   const [filter, setFilter] = useState('all')
+  const provider = typeof localStorage !== 'undefined'
+    ? (localStorage.getItem('studymind-llm-provider') || 'claude')
+    : 'claude'
 
   // Set first topic as active when topics load
   useEffect(() => {
@@ -103,6 +106,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
             topic={currentTopic}
             documentId={documentId}
             bookPage={structure.sections.find(s => s.id === currentTopic.id)?.bookPage}
+            provider={provider}
           />
         ) : filteredTopics.length === 0 && filter !== 'all' ? (
           <div className="text-center text-text-muted py-20">

@@ -50,7 +50,7 @@ export function useLLMStream() {
     }
   }, [])
 
-  const streamRequest = useCallback(async (prompt, { provider = 'claude', model, promptVersion = 'structure', maxTokens = 4096, onToken, onDone, onError }) => {
+  const streamRequest = useCallback(async (prompt, { provider = 'claude', model, promptVersion = 'structure', maxTokens = 4096, messages, onToken, onDone, onError }) => {
     const endpoint = ENDPOINTS[provider]
     if (!endpoint) throw new Error(`Provider desconocido: ${provider}`)
 
@@ -63,7 +63,7 @@ export function useLLMStream() {
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, model, promptVersion, maxTokens }),
+          body: JSON.stringify({ ...(messages ? { messages } : { prompt }), model, promptVersion, maxTokens }),
           signal: controller.signal,
         })
 

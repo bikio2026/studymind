@@ -1,6 +1,6 @@
 // IndexedDB wrapper for StudyMind persistence
 const DB_NAME = 'studymind'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 const STORES = {
   documents: 'documents',
@@ -8,6 +8,7 @@ const STORES = {
   topics: 'topics',
   progress: 'progress',
   pageData: 'pageData',
+  chatHistory: 'chatHistory',
 }
 
 let dbInstance = null
@@ -48,6 +49,12 @@ function openDB() {
       // Stored separately from documents to keep Library loading fast
       if (!db.objectStoreNames.contains(STORES.pageData)) {
         db.createObjectStore(STORES.pageData, { keyPath: 'documentId' })
+      }
+
+      // chatHistory: {id (documentId_topicId), documentId, topicId, messages[], updatedAt}
+      if (!db.objectStoreNames.contains(STORES.chatHistory)) {
+        const chatStore = db.createObjectStore(STORES.chatHistory, { keyPath: 'id' })
+        chatStore.createIndex('documentId', 'documentId', { unique: false })
       }
     }
 
@@ -162,12 +169,13 @@ export const db = {
   },
 
   async deleteDocument(id) {
-    // Cascade: delete structure, topics, progress, pageData
+    // Cascade: delete structure, topics, progress, pageData, chatHistory
     await deleteByKey(STORES.documents, id)
     await deleteByKey(STORES.structures, id)
     await deleteByIndex(STORES.topics, 'documentId', id)
     await deleteByIndex(STORES.progress, 'documentId', id)
     await deleteByKey(STORES.pageData, id)
+    await deleteByIndex(STORES.chatHistory, 'documentId', id)
   },
 
   // Structures
@@ -210,5 +218,22 @@ export const db = {
 
   async getPageData(documentId) {
     return getByKey(STORES.pageData, documentId)
+  },
+
+  // Chat history
+  async getChatHistory(documentId, topicId) {
+    const id = `${documentId}_${topicId}`
+    const record = await getByKey(STORES.chatHistory, id)
+    return record?.messages || []
+  },
+
+  async saveChatHistory(documentId, topicId, messages) {
+    const id = `${documentId}_${topicId}`
+    return put(STORES.chatHistory, { id, documentId, topicId, messages, updatedAt: Date.now() })
+  },
+
+  async deleteChatHistory(documentId, topicId) {
+    const id = `${documentId}_${topicId}`
+    return deleteByKey(STORES.chatHistory, id)
   },
 }

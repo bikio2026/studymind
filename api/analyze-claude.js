@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
 
   const body = await readBody(req)
   try {
-    const { prompt, model = 'claude-haiku-4-5-20251001', promptVersion = 'structure', maxTokens = 4096 } = JSON.parse(body)
+    const { prompt, messages: inputMessages, model = 'claude-haiku-4-5-20251001', promptVersion = 'structure', maxTokens = 4096 } = JSON.parse(body)
     const systemPrompt = getSystemPrompt(promptVersion)
     const apiKey = process.env.ANTHROPIC_API_KEY
 
@@ -38,7 +38,7 @@ module.exports = async function handler(req, res) {
         max_tokens: Math.min(maxTokens, 8192),
         stream: true,
         system: systemPrompt,
-        messages: [{ role: 'user', content: prompt }],
+        messages: inputMessages || [{ role: 'user', content: prompt }],
       }),
     })
 
