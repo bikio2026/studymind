@@ -36,30 +36,35 @@ const GENERAL_KEYWORDS = [
   'contenido', 'contents', 'sumario',
 ]
 
+// Normalize text for keyword matching — handles OCR artifacts
+function normForKeyword(text) {
+  return text.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip accents
+    .replace(/[~·•]/g, '')       // OCR artifacts (lNDI~E → lNDIE)
+    .replace(/l(?=[A-Z])/g, 'I') // OCR: lowercase L before uppercase → I (ANALlTICO → ANALITICO)
+    .toLowerCase()
+}
+
 function scoreTOCPage(pageText) {
   let score = 0
   const lines = pageText.split('\n').filter(l => l.trim())
   if (lines.length === 0) return { score: 0, type: 'unknown' }
 
-  // Signal 1: Keyword in first 300 chars
-  const header = pageText.slice(0, 300).toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  // Signal 1: Keyword in first 500 chars (extended for continuation pages)
+  const header = normForKeyword(pageText.slice(0, 500))
   let type = 'unknown'
 
   for (const kw of ANALYTICAL_KEYWORDS) {
-    const kwNorm = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    if (header.includes(kwNorm)) { score += 30; type = 'analytical'; break }
+    if (header.includes(normForKeyword(kw))) { score += 30; type = 'analytical'; break }
   }
   if (type === 'unknown') {
     for (const kw of GENERAL_KEYWORDS) {
-      const kwNorm = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      if (header.includes(kwNorm)) { score += 30; type = 'general'; break }
+      if (header.includes(normForKeyword(kw))) { score += 30; type = 'general'; break }
     }
   }
   if (type === 'unknown') {
     for (const kw of TOC_KEYWORDS) {
-      const kwNorm = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      if (header.includes(kwNorm)) { score += 30; type = 'general'; break }
+      if (header.includes(normForKeyword(kw))) { score += 30; type = 'general'; break }
     }
   }
 
@@ -139,14 +144,14 @@ export function detectTOCPages(pages) {
 
 /**
  * Extracts combined TOC text from detected regions.
- * Prioritizes analytical index over general TOC.
+ * Prioritizes general TOC (chapter hierarchy) over analytical index (alphabetical).
  */
 export function extractTOCTextFromRegions(tocResult, maxChars = 12000) {
   if (!tocResult.hasTOC || tocResult.regions.length === 0) return ''
 
-  // Sort: analytical first, then general, then unknown
+  // Sort: general first (has chapter hierarchy), then analytical, then unknown
   const sorted = [...tocResult.regions].sort((a, b) => {
-    const priority = { analytical: 0, general: 1, unknown: 2 }
+    const priority = { general: 0, analytical: 1, unknown: 2 }
     return (priority[a.type] ?? 2) - (priority[b.type] ?? 2)
   })
 
