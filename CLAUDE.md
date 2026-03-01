@@ -1,6 +1,6 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
-**Version actual**: v0.2 (Fase 1)
+**Version actual**: v0.3 (Fase 2)
 
 ## Qué es
 App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia local con IndexedDB y biblioteca de documentos.
@@ -31,13 +31,15 @@ src/
     documentStore.js            — Zustand: biblioteca de documentos
     studyStore.js               — Zustand: estructura + topics generados
     progressStore.js            — Zustand: progreso del estudiante
+    chatStore.js                — Zustand: historial de chat por topic
   hooks/
     usePDFParser.js             — Extracción de texto de PDF
     useLLMStream.js             — Streaming SSE multi-provider (Claude/Groq)
     useDocumentAnalysis.js      — Detección de estructura via LLM
     useStudyGuide.js            — Generación de guías (usa studyStore)
+    useChat.js                  — Lógica de chat socrático multi-turn
   lib/
-    db.js                       — Wrapper IndexedDB (documents, structures, topics, progress)
+    db.js                       — Wrapper IndexedDB (documents, structures, topics, progress, chatHistory)
     pdfExtractor.js             — Wrapper de pdfjs-dist
     promptBuilder.js            — Prompts para estructura y guía de estudio
     chunkProcessor.js           — Split de textos largos + fuzzy matching por sección
@@ -49,8 +51,9 @@ src/
     LLMSelector.jsx             — Selector de provider/modelo
     DocumentOutline.jsx         — Sidebar con estructura del documento
     StudyGuide.jsx              — Vista principal de la guía
-    TopicCard.jsx               — Card por tema (resumen, conceptos, explicación, quiz)
+    TopicCard.jsx               — Card por tema (resumen, conceptos, explicación, quiz, chat)
     QuizSection.jsx             — Autoevaluación interactiva
+    ChatSection.jsx             — Chat socrático por tema (streaming, persistente)
     RelevanceFilter.jsx         — Filtro por capa de relevancia
   App.jsx                       — Routing biblioteca vs estudio + pipeline
   main.jsx                      — Entry point React
@@ -82,6 +85,7 @@ api/
 | structures | documentId | title, author, sections[] |
 | topics | documentId_sectionId | sectionTitle, level, relevance, summary, keyConcepts, etc. |
 | progress | documentId_topicId | studied, quizScores[], resets[] |
+| chatHistory | documentId_topicId | messages[{role, content, timestamp}], updatedAt |
 
 ## Capas de relevancia
 | Capa | Color | Significado |
@@ -106,7 +110,7 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 | Fase | Descripción | Estado |
 |------|-------------|--------|
 | 1 | Persistencia y Biblioteca | ✅ Completada |
-| 2 | Chat Conversacional (tutor socrático) | Próxima |
+| 2 | Chat Conversacional (tutor socrático) | ✅ Completada |
 | 3 | Referencias cruzadas y al texto fuente | Pendiente |
 | 4 | Niveles de profundidad y progreso avanzado | Pendiente |
 | 5 | Rutas de aprendizaje | Pendiente |
@@ -115,6 +119,17 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 ---
 
 ## Changelog
+
+### v0.3 — Fase 2: Chat Conversacional / Tutor Socrático (2026-03-01)
+- Chat socrático per-topic con streaming en tiempo real
+- Multi-turn: historial de conversación enviado al LLM (últimos 20 mensajes)
+- Contexto automático: resumen, conceptos clave y explicación del tema inyectados
+- System prompt socrático: guía con preguntas, no da respuestas directas
+- Persistencia de chat en IndexedDB (IDB v3, store chatHistory)
+- Modelos eficientes por defecto: Haiku 4.5 (Claude), Llama 3.1 8B (Groq)
+- Cancel streaming y limpiar historial
+- Endpoints multi-turn backward-compatible (campo messages[] opcional)
+- Nuevo chatStore (Zustand), useChat hook, ChatSection component
 
 ### v0.2 — Fase 1: Persistencia y Biblioteca (2026-02-28)
 - IndexedDB para persistir documentos, estructuras, topics y progreso
