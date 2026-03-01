@@ -58,19 +58,26 @@ function sseHeaders(res) {
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-secret')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 }
 
-// Simple auth: verify x-api-secret header matches APP_SECRET env var
-// If APP_SECRET is not set, auth is disabled (dev mode)
+// Origin-based auth: only allow requests from known domains
+// ALLOWED_ORIGINS env var = comma-separated list (e.g. "https://studymind-eight.vercel.app,http://localhost:3057")
+// If not set, auth is disabled (dev mode — allows all origins)
 function requireAuth(req, res) {
-  const secret = process.env.APP_SECRET
-  if (!secret) return true // No secret configured → allow (dev)
+  const allowedRaw = process.env.ALLOWED_ORIGINS
+  if (!allowedRaw) return true // No origins configured → allow all (dev)
 
-  const provided = req.headers['x-api-secret']
-  if (provided === secret) return true
+  const allowed = allowedRaw.split(',').map(s => s.trim()).filter(Boolean)
+  const origin = req.headers.origin || ''
+  const referer = req.headers.referer || ''
 
-  res.status(403).json({ error: 'Acceso no autorizado. Verificá la configuración de APP_SECRET.' })
+  // Check origin header (sent on POST/fetch requests)
+  if (origin && allowed.some(a => origin.startsWith(a))) return true
+  // Fallback: check referer (some browsers send referer instead of origin)
+  if (referer && allowed.some(a => referer.startsWith(a))) return true
+
+  res.status(403).json({ error: 'Origen no autorizado.' })
   return false
 }
 

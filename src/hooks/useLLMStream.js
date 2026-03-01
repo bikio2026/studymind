@@ -32,9 +32,6 @@ function classifyError(status, message) {
   return 'other'
 }
 
-// App secret for API auth — injected at build time via VITE_ prefix
-const APP_SECRET = import.meta.env.VITE_APP_SECRET || ''
-
 export function useLLMStream() {
   const [status, setStatus] = useState({ claude: false, groq: false })
   const activeControllers = useRef(new Set())
@@ -63,12 +60,9 @@ export function useLLMStream() {
       activeControllers.current.add(controller)
 
       try {
-        const headers = { 'Content-Type': 'application/json' }
-        if (APP_SECRET) headers['x-api-secret'] = APP_SECRET
-
         const res = await fetch(endpoint, {
           method: 'POST',
-          headers,
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, model, promptVersion, maxTokens }),
           signal: controller.signal,
         })
