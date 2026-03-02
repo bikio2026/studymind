@@ -13,6 +13,19 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+// Stream inactivity timeout (90s without receiving data → assume server died)
+const STREAM_INACTIVITY_TIMEOUT = 90000
+
+// reader.read() with timeout — prevents hanging forever if server dies
+function readWithTimeout(reader, ms = STREAM_INACTIVITY_TIMEOUT) {
+  return Promise.race([
+    reader.read(),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Stream timeout: el servidor dejó de responder. Reintentá.')), ms)
+    ),
+  ])
+}
+
 // Detect if error is a rate limit (429) or spending limit
 function classifyError(status, message) {
   const msg = (message || '').toLowerCase()
@@ -103,7 +116,7 @@ export function useLLMStream() {
         let doneCalled = false
 
         while (true) {
-          const { done, value } = await reader.read()
+          const { done, value } = await readWithTimeout(reader)
           if (done) break
 
           buffer += decoder.decode(value, { stream: true })
@@ -114,6 +127,10 @@ export function useLLMStream() {
             if (!line.startsWith('data: ')) continue
             try {
               const json = JSON.parse(line.slice(6))
+              // Server-side error (e.g. Claude stream timeout)
+              if (json.error) {
+                throw new Error(json.error)
+              }
               if (json.token) {
                 fullText += json.token
                 onToken?.(fullText, json.token)
@@ -122,7 +139,10 @@ export function useLLMStream() {
                 doneCalled = true
                 onDone?.(fullText)
               }
-            } catch { /* skip */ }
+            } catch (parseErr) {
+              // Re-throw real errors, skip JSON parse failures
+              if (parseErr.message && !parseErr.message.includes('JSON')) throw parseErr
+            }
           }
         }
 

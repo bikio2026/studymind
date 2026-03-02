@@ -57,8 +57,19 @@ module.exports = async function handler(req, res) {
     const decoder = new TextDecoder()
     let buffer = ''
 
+    // Timeout per read: 120s inactivity → abort
+    const READ_TIMEOUT = 120000
+    function readWithTimeout() {
+      return Promise.race([
+        reader.read(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Groq stream timeout: sin datos por 120s')), READ_TIMEOUT)
+        ),
+      ])
+    }
+
     while (true) {
-      const { done, value } = await reader.read()
+      const { done, value } = await readWithTimeout()
       if (done) break
 
       buffer += decoder.decode(value, { stream: true })
@@ -89,6 +100,9 @@ module.exports = async function handler(req, res) {
     if (!res.headersSent) {
       res.status(500).json({ error: err.message })
     } else {
+      try {
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`)
+      } catch { /* connection may be dead */ }
       res.end()
     }
   }

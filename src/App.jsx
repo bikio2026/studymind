@@ -77,8 +77,12 @@ export default function App() {
   }, [loadDocuments, checkHealth])
 
   // When a document is activated, try to load from IDB cache
+  // Skip if already processing (parsing/analyzing/generating) — processDocument handles its own phases
   useEffect(() => {
     if (!activeDocumentId) return
+
+    const currentPhase = useStudyStore.getState().phase
+    if (currentPhase !== 'idle') return
 
     // Set loading phase synchronously to avoid flash of "Sin datos" screen
     const { setPhase } = useStudyStore.getState()
