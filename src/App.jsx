@@ -18,7 +18,7 @@ import StopDialog from './components/StopDialog'
 import CancelConfirmDialog from './components/CancelConfirmDialog'
 import ThemeSelector from './components/ThemeSelector'
 import { useThemeStore } from './stores/themeStore'
-import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu } from 'lucide-react'
+import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu, Loader2 } from 'lucide-react'
 
 async function computeContentHash(fullText, totalPages) {
   const input = fullText.slice(0, 10000) + String(totalPages)
@@ -80,6 +80,10 @@ export default function App() {
   useEffect(() => {
     if (!activeDocumentId) return
 
+    // Set loading phase synchronously to avoid flash of "Sin datos" screen
+    const { setPhase } = useStudyStore.getState()
+    setPhase('loading')
+
     const loadCached = async () => {
       const cached = await loadFromDB(activeDocumentId)
       if (cached) {
@@ -138,10 +142,12 @@ export default function App() {
 
     const result = await generateGuides(documentId, doc, struct, config)
 
-    // Only mark as 'ready' if generation completed (not cancelled)
+    const { updateDocumentStatus } = useDocumentStore.getState()
     if (result?.completed) {
-      const { updateDocumentStatus } = useDocumentStore.getState()
       await updateDocumentStatus(documentId, 'ready')
+    } else if (!result?.cancelled && result?.generated > 0) {
+      // API errors caused partial generation — mark incomplete so user can resume
+      await updateDocumentStatus(documentId, 'incomplete')
     }
     // If cancelled, phase is 'stopped' — StopDialog handles the rest
   }, [analyzeStructure, generateGuides, setPhase, saveDocument, setActiveDocument, saveStructure])
@@ -325,9 +331,12 @@ export default function App() {
 
       const result = await generateGuides(activeDocumentId, doc, structure, config, existingTopicIds)
 
+      const { updateDocumentStatus } = useDocumentStore.getState()
       if (result?.completed) {
-        const { updateDocumentStatus } = useDocumentStore.getState()
         await updateDocumentStatus(activeDocumentId, 'ready')
+      } else if (!result?.cancelled && result?.generated > 0) {
+        // Partial resume — keep as incomplete
+        await updateDocumentStatus(activeDocumentId, 'incomplete')
       }
     } catch (err) {
       console.error('[StudyMind] Resume error:', err)
@@ -449,6 +458,13 @@ export default function App() {
               Volver a la biblioteca
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Loading state (document activated, loading from cache) */}
+      {currentPhase === 'loading' && (
+        <div className="flex items-center justify-center mt-20">
+          <Loader2 className="w-6 h-6 text-accent animate-spin" />
         </div>
       )}
 

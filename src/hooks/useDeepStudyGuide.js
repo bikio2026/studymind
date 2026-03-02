@@ -292,6 +292,9 @@ export function useDeepStudyGuide() {
 
     const normFullCached = precomputeNormalized(document.fullText)
 
+    let generatedCount = 0
+    let errorCount = 0
+
     for (let i = 0; i < contentSections.length; i++) {
       if (cancelledRef.current) break
 
@@ -343,6 +346,7 @@ export function useDeepStudyGuide() {
         if (topic) {
           topic.confidence = confidence
           await addTopic(documentId, topic)
+          generatedCount++
           console.log(`[StudyMind] ✓ "${section.title}" — mode: ${topic.mode}, deepExplanation: ${topic.deepExplanation?.length || 0} chars`)
         }
 
@@ -356,20 +360,27 @@ export function useDeepStudyGuide() {
           break
         }
         console.error(`Error generando guía para "${section.title}":`, err)
+        errorCount++
       }
     }
 
-    const completed = !cancelledRef.current
+    const cancelled = cancelledRef.current
+    const completed = !cancelled && errorCount === 0
     setGeneratingTopic(null)
 
     if (completed) {
       setProgress({ current: contentSections.length, total: contentSections.length })
       setPhase('ready')
-    } else {
+    } else if (cancelled) {
       setPhase('stopped')
+    } else {
+      // API errors caused partial generation — show what we have
+      console.warn(`[StudyMind] Partial generation: ${generatedCount}/${toGenerate} topics, ${errorCount} errors`)
+      setProgress({ current: contentSections.length, total: contentSections.length })
+      setPhase('ready')
     }
 
-    return { completed, total: contentSections.length }
+    return { completed, cancelled, total: contentSections.length, generated: generatedCount }
   }, [streamRequest, setPhase, setGeneratingTopic, setProgress, addTopic])
 
   const cancelGeneration = useCallback(() => {
