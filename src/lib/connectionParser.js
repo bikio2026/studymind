@@ -123,19 +123,62 @@ function normalizeConnection(conn) {
 /**
  * Enrich an array of connection entries with navigation data.
  * Handles both string and object formats from LLM.
- * Returns array of { text, targetTopicId, targetTitle } objects.
+ * Returns array of { text, targetTopicId, targetTitle, crossImport, targetDocumentId } objects.
+ *
+ * When allBookTopics is provided, connections that don't match in the current document
+ * are searched across all topics of the book (cross-import connections).
  */
-export function enrichConnections(connections, sections, topics) {
+export function enrichConnections(connections, sections, topics, allBookTopics = []) {
   if (!connections?.length) return []
+
+  const currentTopicIds = new Set(topics.map(t => t.id))
 
   return connections.map(conn => {
     const { displayText, targetHint } = normalizeConnection(conn)
-    const match = targetHint ? findRelatedTopic(targetHint, sections, topics) : null
+
+    // First: try matching in the current document
+    let match = targetHint ? findRelatedTopic(targetHint, sections, topics) : null
+    let crossImport = false
+    let targetDocumentId = null
+
+    // Second: if no match found and we have book-wide topics, search cross-import
+    if (!match && targetHint && allBookTopics.length > 0) {
+      const normTarget = normalizeText(targetHint)
+      if (normTarget && normTarget.length >= 3) {
+        let bestScore = 0
+        let bestTopic = null
+
+        for (const bt of allBookTopics) {
+          // Skip topics from the current document
+          const btSectionId = bt.sectionId || bt.id
+          if (currentTopicIds.has(btSectionId)) continue
+
+          const normTitle = normalizeText(bt.sectionTitle || '')
+          const score = similarityScore(normTarget, normTitle)
+          if (score > bestScore) {
+            bestScore = score
+            bestTopic = bt
+          }
+        }
+
+        if (bestTopic && bestScore >= 0.3) {
+          match = {
+            topicId: bestTopic.sectionId || bestTopic.id,
+            title: bestTopic.sectionTitle,
+            score: bestScore,
+          }
+          crossImport = true
+          targetDocumentId = bestTopic.documentId || null
+        }
+      }
+    }
 
     return {
       text: displayText,
       targetTopicId: match?.topicId || null,
       targetTitle: match?.title || null,
+      crossImport,
+      targetDocumentId,
     }
   })
 }

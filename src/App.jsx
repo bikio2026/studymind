@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { usePDFParser } from './hooks/usePDFParser'
 import { useDocumentAnalysis } from './hooks/useDocumentAnalysis'
 import { useDeepStudyGuide } from './hooks/useDeepStudyGuide'
@@ -41,6 +41,10 @@ export default function App() {
   const [pageRangeInfo, setPageRangeInfo] = useState(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [resuming, setResuming] = useState(false)
+  const [bookData, setBookData] = useState(null) // { book, processedSectionIds }
+  const [expandingBookData, setExpandingBookData] = useState(null) // book data for "Ampliar cobertura"
+  const [expandError, setExpandError] = useState(null)
+  const expandFileRef = useRef(null)
 
   // Zustand stores
   const activeDocumentId = useDocumentStore(s => s.activeDocumentId)
@@ -97,6 +101,56 @@ export default function App() {
     loadCached()
   }, [activeDocumentId, loadFromDB, loadProgress])
 
+  // Load book data when active document has a bookId
+  useEffect(() => {
+    if (!activeDocumentId) {
+      setBookData(null)
+      return
+    }
+    const loadBook = async () => {
+      try {
+        const doc = await db.getDocument(activeDocumentId)
+        if (!doc?.bookId) {
+          setBookData(null)
+          return
+        }
+        const book = await db.getBook(doc.bookId)
+        if (!book) {
+          setBookData(null)
+          return
+        }
+        // Get all topics from all documents of this book to determine processed sections
+        const bookTopics = await db.getBookTopics(doc.bookId)
+
+        // Match book structure sections to processed topics
+        // Use sectionId for same-import match + title similarity for cross-import
+        const processedSectionIds = new Set()
+        const bookSections = book.structure?.sections || []
+        for (const bs of bookSections) {
+          for (const bt of bookTopics) {
+            // Same-import: sectionId matches book structure section.id
+            if (String(bt.sectionId) === String(bs.id)) {
+              processedSectionIds.add(bs.id)
+              break
+            }
+            // Cross-import: title containment check
+            const bsTitle = (bs.title || '').toLowerCase()
+            const btTitle = (bt.sectionTitle || '').toLowerCase()
+            if (bsTitle && btTitle && (bsTitle.includes(btTitle) || btTitle.includes(bsTitle))) {
+              processedSectionIds.add(bs.id)
+              break
+            }
+          }
+        }
+        setBookData({ book, processedSectionIds, bookTopics })
+      } catch (err) {
+        console.warn('[StudyMind] Failed to load book data:', err.message)
+        setBookData(null)
+      }
+    }
+    loadBook()
+  }, [activeDocumentId, topics]) // Re-run when topics change (after generation completes)
+
   // Process a parsed PDF document (called after page range selection)
   const processDocument = useCallback(async (doc, contentHash, config) => {
     const documentId = crypto.randomUUID()
@@ -142,6 +196,40 @@ export default function App() {
     if (struct.title) {
       const { renameDocument } = useDocumentStore.getState()
       await renameDocument(documentId, struct.title)
+    }
+
+    // --- Book entity: create or link ---
+    try {
+      let book = await db.getBookByHash(contentHash)
+      if (!book) {
+        // Create new Book with structure (uses full structure from analysis)
+        book = {
+          id: crypto.randomUUID(),
+          contentHash,
+          fileName: doc.fileName,
+          totalPages: doc.originalTotalPages || doc.totalPages,
+          structure: struct,
+          createdAt: Date.now(),
+        }
+        await db.saveBook(book)
+        console.log(`[StudyMind] Book created: "${struct.title || doc.fileName}" (${book.id})`)
+      } else {
+        console.log(`[StudyMind] Book found: "${book.fileName}" (${book.id}), linking document`)
+      }
+
+      // Link document to book
+      const updatedDoc = await db.getDocument(documentId)
+      if (updatedDoc) {
+        updatedDoc.bookId = book.id
+        await db.saveDocument(updatedDoc)
+        // Also update in-memory store
+        useDocumentStore.setState(state => ({
+          documents: state.documents.map(d => d.id === documentId ? { ...d, bookId: book.id } : d),
+        }))
+      }
+    } catch (bookErr) {
+      // Non-critical: if book creation fails, document still works standalone
+      console.warn('[StudyMind] Book creation/linking failed:', bookErr.message)
     }
 
     const result = await generateGuides(documentId, doc, struct, config)
@@ -349,6 +437,71 @@ export default function App() {
     }
   }, [activeDocumentId, structure, topics, generateGuides])
 
+  // Cross-import navigation: switch to another document from the same book
+  const handleNavigateToDocument = useCallback((documentId) => {
+    if (!documentId) return
+    // Reset current view and load target document
+    resetParser()
+    resetGuide()
+    setActiveDocument(documentId)
+  }, [resetParser, resetGuide, setActiveDocument])
+
+  // Expand coverage: trigger file upload for same book
+  const handleExpandCoverage = useCallback(() => {
+    if (!bookData?.book) return
+    setExpandingBookData(bookData)
+    setExpandError(null)
+    setTimeout(() => expandFileRef.current?.click(), 0)
+  }, [bookData])
+
+  // Expand coverage: file selected
+  const handleExpandFileChange = useCallback(async (e) => {
+    const file = e.target.files?.[0]
+    if (expandFileRef.current) expandFileRef.current.value = '' // reset input
+    if (!file || !expandingBookData) {
+      setExpandingBookData(null)
+      return
+    }
+
+    if (file.type !== 'application/pdf') {
+      setExpandError('Solo se aceptan archivos PDF')
+      setExpandingBookData(null)
+      return
+    }
+
+    // Navigate away from current document, start parsing
+    clearActiveDocument()
+    resetParser()
+    resetGuide()
+    setPhase('parsing')
+
+    const doc = await parseFile(file)
+    if (!doc) {
+      setPhase('idle')
+      setExpandingBookData(null)
+      return
+    }
+
+    const contentHash = await computeContentHash(doc.fullText, doc.totalPages)
+
+    // Validate hash matches the book
+    if (contentHash !== expandingBookData.book.contentHash) {
+      setPhase('idle')
+      setExpandError('Este PDF no coincide con el libro original. Asegurate de subir el mismo archivo.')
+      setExpandingBookData(null)
+      return
+    }
+
+    // Show page range dialog with book data (skip duplicate dialog)
+    setPhase('idle')
+    setPageRangeInfo({
+      parsedDoc: doc,
+      contentHash,
+      bookData: expandingBookData, // pass to PageRangeDialog
+    })
+    setExpandingBookData(null)
+  }, [expandingBookData, parseFile, setPhase, clearActiveDocument, resetParser, resetGuide])
+
   // Determine current visual phase
   const currentPhase = parsing ? 'parsing'
     : analyzing ? 'analyzing'
@@ -388,6 +541,8 @@ export default function App() {
             status={status}
             onConfirm={handlePageRangeConfirm}
             onCancel={handlePageRangeCancel}
+            bookStructure={pageRangeInfo.bookData?.book?.structure}
+            processedSectionIds={pageRangeInfo.bookData?.processedSectionIds}
           />
         )}
       </div>
@@ -501,6 +656,9 @@ export default function App() {
           documentStatus={activeDoc?.status}
           onResume={activeDoc?.status === 'incomplete' ? handleResumeProcessing : undefined}
           resuming={resuming}
+          bookData={bookData}
+          onExpandCoverage={handleExpandCoverage}
+          onNavigateToDocument={handleNavigateToDocument}
         />
       )}
 
@@ -531,6 +689,31 @@ export default function App() {
               className="px-4 py-2 text-sm text-accent hover:text-accent-hover bg-accent/10 hover:bg-accent/20 rounded-lg transition-colors"
             >
               Volver a biblioteca
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file input for expand coverage */}
+      <input
+        ref={expandFileRef}
+        type="file"
+        accept=".pdf"
+        onChange={handleExpandFileChange}
+        className="hidden"
+      />
+
+      {/* Expand coverage error toast */}
+      {expandError && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-fadeIn">
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-error/10 border border-error/20 shadow-lg backdrop-blur-sm">
+            <AlertCircle className="w-4 h-4 text-error shrink-0" />
+            <span className="text-sm text-error">{expandError}</span>
+            <button
+              onClick={() => setExpandError(null)}
+              className="text-error/60 hover:text-error ml-2 text-xs"
+            >
+              ✕
             </button>
           </div>
         </div>

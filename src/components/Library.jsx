@@ -71,6 +71,12 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {doc.bookId && (
+              <span className="text-[10px] font-medium text-accent bg-accent/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <BookOpen className="w-2.5 h-2.5" />
+                Libro
+              </span>
+            )}
             {isReady ? (
               <span className="text-[10px] font-medium text-success bg-success/10 px-2 py-0.5 rounded-full">
                 Listo

@@ -65,6 +65,35 @@ function TopicItem({ topic, section, isActive, mastery, onClick }) {
   )
 }
 
+// Unprocessed section item — disabled, grayed out
+function UnprocessedItem({ section }) {
+  return (
+    <div
+      className="w-full text-left px-3 py-2.5 rounded-lg opacity-40 cursor-default"
+      title="Usá 'Ampliar cobertura' para procesar esta sección"
+    >
+      <div className="flex items-start gap-2.5">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1 border border-text-muted/20 border-dashed" />
+        <div className="flex-1 min-w-0">
+          <span className="text-[13px] leading-snug line-clamp-2 text-text-muted">
+            {section.title}
+          </span>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[9px] font-medium uppercase tracking-wide px-1.5 py-px rounded border text-text-muted/50 bg-surface-light/30 border-surface-light/40">
+              No procesada
+            </span>
+            {section.bookPage && (
+              <span className="text-[10px] text-text-muted/30 font-mono">
+                p.{section.bookPage}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Collapsible chapter group (for multi-chapter mode)
 function ChapterGroup({ title, children, defaultExpanded = true, topicCount, masteredCount }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
@@ -95,11 +124,28 @@ function ChapterGroup({ title, children, defaultExpanded = true, topicCount, mas
   )
 }
 
-export default function DocumentOutline({ structure, topics, activeTopic, onSelectTopic }) {
+export default function DocumentOutline({ structure, topics, activeTopic, onSelectTopic, bookStructure, processedSectionIds }) {
   if (!structure) return null
 
   const progress = useProgressStore(s => s.progress)
   const stats = getDocumentStats(topics, progress)
+
+  const hasBookView = bookStructure?.sections?.length > 0
+
+  // Book-wide sections: show all book sections, mark processed vs unprocessed
+  const bookSections = useMemo(() => {
+    if (!hasBookView) return []
+    const topicIdSet = new Set(topics.map(t => String(t.id)))
+    return (bookStructure.sections || [])
+      .filter(s => (s.level || 1) <= 2)
+      .map(s => ({
+        section: s,
+        isProcessed: processedSectionIds?.has(s.id),
+        // Find matching topic in current document
+        topic: topics.find(t => String(t.id) === String(s.id)),
+        isInCurrentDoc: topicIdSet.has(String(s.id)),
+      }))
+  }, [hasBookView, bookStructure, processedSectionIds, topics])
 
   // Group topics by their root chapter ancestor
   const { groups, isSingleGroup } = useMemo(() => {
@@ -135,16 +181,76 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
 
   return (
     <div className="w-72 shrink-0 bg-surface-alt rounded-xl p-4 overflow-y-auto max-h-[calc(100vh-120px)]">
-      {/* Document title */}
+      {/* Document title + book badge */}
       <div className="flex items-center gap-2 mb-3 pb-3 border-b border-surface-light">
         <BookOpen className="w-4 h-4 text-accent shrink-0" />
-        <h2 className="text-sm font-semibold truncate" title={structure.title}>
-          {structure.title}
-        </h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold truncate" title={hasBookView ? bookStructure.title : structure.title}>
+            {hasBookView ? bookStructure.title : structure.title}
+          </h2>
+          {hasBookView && (
+            <p className="text-[10px] text-text-muted mt-0.5">
+              {bookSections.filter(s => s.isProcessed).length} de {bookSections.length} secciones
+            </p>
+          )}
+        </div>
       </div>
 
-      {/* Topic navigation */}
+      {/* Book-wide section view (when book data available) */}
+      {hasBookView && (
+        <div className="mb-3 pb-3 border-b border-surface-light/50">
+          <p className="text-[10px] text-text-dim uppercase tracking-wider font-medium mb-2 px-2">
+            Secciones del libro
+          </p>
+          <div className="space-y-0.5">
+            {bookSections.map(({ section, isProcessed, topic, isInCurrentDoc }) => {
+              if (isInCurrentDoc && topic) {
+                // This section is in the current document — render as normal topic
+                return (
+                  <TopicItem
+                    key={`book-${section.id}`}
+                    topic={topic}
+                    section={section}
+                    isActive={activeTopic === topic.id}
+                    mastery={getMasteryLevel(progress[topic.id])}
+                    onClick={() => onSelectTopic(topic.id)}
+                  />
+                )
+              }
+              if (isProcessed) {
+                // Processed in another import — show with indicator
+                return (
+                  <div
+                    key={`book-${section.id}`}
+                    className="w-full text-left px-3 py-2 rounded-lg opacity-60"
+                    title="Procesada en otro import"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1 bg-amber-400/60" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[12px] leading-snug line-clamp-1 text-text-muted">
+                          {section.title}
+                        </span>
+                        <span className="text-[9px] text-amber-500/60 mt-0.5 block">Otro import</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+              // Not processed — disabled
+              return <UnprocessedItem key={`book-${section.id}`} section={section} />
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Topic navigation (current document topics) */}
       <nav className="space-y-0.5">
+        {hasBookView && topics.length > 0 && (
+          <p className="text-[10px] text-text-dim uppercase tracking-wider font-medium mb-2 px-2">
+            Temas de este import
+          </p>
+        )}
         {topics.length === 0 ? (
           <p className="text-xs text-text-muted/60 text-center py-4">
             Procesando temas...

@@ -4,9 +4,10 @@ import RelevanceFilter from './RelevanceFilter'
 import DocumentOutline from './DocumentOutline'
 import LearningPath from './LearningPath'
 import ProgressDashboard from './ProgressDashboard'
-import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3, List, Route } from 'lucide-react'
+import BookCoverageBar from './BookCoverageBar'
+import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3, List, Route, PlusCircle } from 'lucide-react'
 
-export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming }) {
+export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming, bookData, onExpandCoverage, onNavigateToDocument }) {
   const [activeTopic, setActiveTopic] = useState(null)
   const [filter, setFilter] = useState('all')
   const [showDashboard, setShowDashboard] = useState(false)
@@ -76,6 +77,8 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
             activeTopic={activeTopic}
             onSelectTopic={setActiveTopic}
             documentId={documentId}
+            bookStructure={bookData?.book?.structure}
+            processedSectionIds={bookData?.processedSectionIds}
           />
         ) : (
           <div className="bg-surface-alt rounded-xl p-4 overflow-y-auto flex-1">
@@ -116,6 +119,29 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
                     Continuar procesando
                   </>
                 )}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Book coverage bar */}
+        {bookData?.book && (
+          <div className="mb-4 px-4 py-3 rounded-xl bg-surface-alt border border-surface-light/30">
+            <BookCoverageBar
+              bookStructure={bookData.book.structure}
+              processedSectionIds={bookData.processedSectionIds}
+              variant="expanded"
+              totalPages={bookData.book.totalPages}
+            />
+            {onExpandCoverage && bookData.processedSectionIds?.size < (bookData.book.structure?.sections?.filter(s => (s.level || 1) <= 2).length || 0) && (
+              <button
+                onClick={onExpandCoverage}
+                className="mt-2.5 flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent/80
+                  px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/15 border border-accent/20
+                  transition-colors"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Ampliar cobertura
               </button>
             )}
           </div>
@@ -176,6 +202,8 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
             sections={structure.sections}
             topics={topics}
             onNavigateToTopic={setActiveTopic}
+            allBookTopics={bookData?.bookTopics}
+            onNavigateToDocument={onNavigateToDocument}
           />
         ) : filteredTopics.length === 0 && filter !== 'all' ? (
           <div className="text-center text-text-muted py-20">

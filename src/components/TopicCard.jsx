@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText, Layers, BookMarked } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText, Layers, BookMarked, PenLine } from 'lucide-react'
 import QuizSection from './QuizSection'
+import FreeTextQuizSection from './FreeTextQuizSection'
 import ChatSection from './ChatSection'
 import ConnectionLink from './ConnectionLink'
 import SourceTextViewer from './SourceTextViewer'
@@ -149,7 +150,7 @@ function DefinitionsBox({ definitions }) {
   )
 }
 
-export default function TopicCard({ topic, documentId, bookPage, provider, sections, topics, onNavigateToTopic }) {
+export default function TopicCard({ topic, documentId, bookPage, provider, sections, topics, onNavigateToTopic, allBookTopics, onNavigateToDocument }) {
   const [expandedSections, setExpandedSections] = useState({
     sourceText: false,
     explanation: false,
@@ -178,14 +179,25 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
     localStorage.setItem(depthKey, level)
   }
 
+  // Quiz mode: self-assessment or free-text LLM evaluation
+  const quizModeKey = `studymind-quizmode-${topic.id}`
+  const [quizMode, setQuizMode] = useState(() => {
+    if (typeof localStorage === 'undefined') return 'self'
+    return localStorage.getItem(quizModeKey) || 'self'
+  })
+  const changeQuizMode = (mode) => {
+    setQuizMode(mode)
+    localStorage.setItem(quizModeKey, mode)
+  }
+
   const showKeyConcepts = depth !== 'resumen'
   const showExplanation = depth === 'completo'
   const showConnections = depth !== 'resumen'
 
   // Enrich connections with navigation data
   const enrichedConnections = useMemo(
-    () => enrichConnections(topic.connections, sections, topics),
-    [topic.connections, sections, topics]
+    () => enrichConnections(topic.connections, sections, topics, allBookTopics),
+    [topic.connections, sections, topics, allBookTopics]
   )
 
   const toggle = (section) => {
@@ -332,6 +344,7 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
                 key={i}
                 connection={conn}
                 onNavigate={onNavigateToTopic}
+                onNavigateToDocument={onNavigateToDocument}
               />
             ))}
           </ul>
@@ -341,15 +354,53 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
       {/* Expandable: Quiz */}
       {topic.quiz?.length > 0 && (
         <CollapsibleSection
-          title={`Autoevaluación (${topic.quiz.length} preguntas)`}
+          title={`Quiz (${topic.quiz.length} preguntas)`}
           icon={CheckCircle}
           expanded={expandedSections.quiz}
           onToggle={() => toggle('quiz')}
         >
-          <QuizSection
-            questions={topic.quiz}
-            onComplete={(score) => saveQuizScore(documentId, topic.id, score)}
-          />
+          {/* Quiz mode toggle */}
+          <div className="flex items-center gap-1 mb-4">
+            <button
+              onClick={() => changeQuizMode('self')}
+              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors border flex items-center gap-1.5 ${
+                quizMode === 'self'
+                  ? 'bg-accent/15 text-accent border-accent/30 font-medium'
+                  : 'text-text-muted hover:text-text-dim border-surface-light hover:border-surface-light'
+              }`}
+            >
+              <CheckCircle className="w-3 h-3" />
+              Autoevaluación
+            </button>
+            <button
+              onClick={() => changeQuizMode('freetext')}
+              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors border flex items-center gap-1.5 ${
+                quizMode === 'freetext'
+                  ? 'bg-accent/15 text-accent border-accent/30 font-medium'
+                  : 'text-text-muted hover:text-text-dim border-surface-light hover:border-surface-light'
+              }`}
+            >
+              <PenLine className="w-3 h-3" />
+              Texto libre
+            </button>
+            {quizMode === 'freetext' && (
+              <span className="text-[10px] text-text-muted ml-1">Usa API</span>
+            )}
+          </div>
+
+          {quizMode === 'self' ? (
+            <QuizSection
+              questions={topic.quiz}
+              onComplete={(score) => saveQuizScore(documentId, topic.id, score)}
+            />
+          ) : (
+            <FreeTextQuizSection
+              questions={topic.quiz}
+              topicContext={{ sectionTitle: topic.sectionTitle, summary: topic.summary }}
+              provider={provider}
+              onComplete={(score) => saveQuizScore(documentId, topic.id, score)}
+            />
+          )}
           <NextTopicSuggestion
             topics={topics}
             currentTopicId={topic.id}

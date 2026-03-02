@@ -207,3 +207,42 @@ REGLAS:
 - Las conexiones deben referir a secciones del mismo documento, indicando la relación específica.
 - Escribí en español.`
 }
+
+export function buildQuizEvaluationPrompt(question, modelAnswer, userAnswer, topicContext) {
+  return `Evaluá la respuesta del estudiante a esta pregunta de quiz.
+
+CONTEXTO DEL TEMA:
+Sección: "${topicContext.sectionTitle}"
+Resumen: ${topicContext.summary}
+
+PREGUNTA: ${question}
+
+RESPUESTA MODELO (referencia): ${modelAnswer}
+
+RESPUESTA DEL ESTUDIANTE: ${userAnswer}
+
+Devolvé ÚNICAMENTE un JSON válido:
+
+{
+  "score": 75,
+  "classification": "partial",
+  "feedback": "Explicación constructiva de 2-3 oraciones."
+}
+
+RÚBRICA:
+- score: 0-100. Evaluá COMPRENSIÓN CONCEPTUAL, no vocabulario exacto ni redacción.
+- classification: "correct" (≥80), "partial" (40-79), "incorrect" (<40)
+- feedback: Constructivo, en español rioplatense. Mencioná qué estuvo bien y qué faltó o fue incorrecto. Si el estudiante mostró comprensión parcial, reconocelo.
+
+CRITERIOS DE EVALUACIÓN:
+- ¿Demuestra comprensión del concepto central? (40% del peso)
+- ¿Incluye los elementos clave de la respuesta modelo? (30%)
+- ¿El razonamiento es correcto, aunque use otras palabras? (20%)
+- ¿Hay errores factuales o confusiones importantes? (10% penalización)
+
+IMPORTANTE:
+- Una respuesta puede ser correcta aunque use palabras diferentes a la respuesta modelo.
+- Si la respuesta es muy corta pero conceptualmente correcta, score alto con feedback sugiriendo expandir.
+- Si la respuesta es larga pero confusa o incorrecta, score bajo con feedback claro.
+- No seas condescendiente. Sé directo y útil.`
+}

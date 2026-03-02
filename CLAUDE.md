@@ -1,6 +1,6 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
-**Version actual**: v0.8
+**Version actual**: v0.9
 
 ## Qué es
 App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia server-side con SQLite (@libsql/client, compatible Turso) y biblioteca de documentos.
@@ -56,7 +56,9 @@ src/
     DocumentOutline.jsx         — Sidebar con estructura del documento
     StudyGuide.jsx              — Vista principal de la guía
     TopicCard.jsx               — Card por tema (resumen, conceptos, explicación, quiz, chat)
-    QuizSection.jsx             — Autoevaluación interactiva
+    QuizSection.jsx             — Autoevaluación interactiva (modo self)
+    FreeTextQuizSection.jsx     — Quiz texto libre evaluado por LLM
+    BookCoverageBar.jsx         — Barra de cobertura SVG tipo torrent
     ChatSection.jsx             — Chat socrático por tema (streaming, persistente)
     ThemeSelector.jsx           — Dropdown selector de tema visual
     RelevanceFilter.jsx         — Filtro por capa de relevancia
@@ -92,12 +94,13 @@ Local: `file:./data/studymind.db` | Producción: Turso remoto (`TURSO_DATABASE_U
 
 | Tabla | PK | Contenido |
 |-------|-----|-----------|
-| documents | id (UUID) | fileName, contentHash, processedAt, data (JSON blob) |
+| documents | id (UUID) | fileName, contentHash, processedAt, book_id, data (JSON blob) |
 | structures | document_id | data (JSON: title, author, sections[]) |
 | topics | id (docId_sectionId) | document_id, data (JSON: sectionTitle, relevance, summary, etc.) |
 | progress | id (docId_topicId) | document_id, data (JSON: studied, quizScores[], resets[]) |
 | page_data | document_id | data (JSON: texto extraído por página) |
 | chat_history | id (docId_topicId) | document_id, data (JSON: messages[]), updated_at |
+| books | id (UUID) | content_hash (UNIQUE), file_name, total_pages, structure (JSON), created_at |
 
 ## Capas de relevancia
 | Capa | Color | Significado |
@@ -126,11 +129,30 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 | 3 | Referencias cruzadas y al texto fuente | ✅ Completada |
 | 4 | Niveles de profundidad y progreso avanzado | ✅ Completada |
 | 5 | Rutas de aprendizaje | ✅ Completada |
-| 6 | Roles y multi-usuario | Pendiente |
+| 6 | Quiz texto libre + Importación incremental de libros | ✅ Completada |
+| 7 | Roles y multi-usuario | Pendiente |
 
 ---
 
 ## Changelog
+
+### v0.9 — Quiz Texto Libre + Importación Incremental de Libros (2026-03-02)
+- **Quiz texto libre**: El estudiante escribe su respuesta y el LLM la evalúa (score 0-100, feedback constructivo)
+- Toggle "Autoevaluación / Texto libre" por tema, persistido en localStorage
+- Nuevo system prompt `quizEval` + `buildQuizEvaluationPrompt()` con rúbrica comprensión conceptual
+- **Entidad Book**: tabla `books` agrupa múltiples imports parciales del mismo PDF por contentHash
+- Columna `book_id` en `documents` para vincular documentos a libros
+- **BookCoverageBar**: barra SVG tipo torrent que muestra cobertura de secciones procesadas vs pendientes
+- 3 variantes de barra: compact (Library), expanded (StudyGuide), interactive (PageRangeDialog)
+- **Ampliar cobertura**: botón para subir el mismo PDF y procesar secciones adicionales
+- Validación de hash: confirma que el PDF subido es el mismo libro
+- PageRangeDialog con barra interactiva: click en sección pendiente auto-selecciona rango
+- **Conexiones cross-import**: topics de distintos imports del mismo libro pueden conectarse
+- ConnectionLink muestra badge "Otro import" con navegación al documento correcto
+- **Vista unificada de libro**: DocumentOutline muestra TODAS las secciones del libro (procesadas y no procesadas)
+- Secciones no procesadas aparecen grises con badge "No procesada"
+- 2 nuevos componentes: FreeTextQuizSection.jsx, BookCoverageBar.jsx
+- 5 nuevas operaciones DB: getBookByHash, getBook, saveBook, getBookDocuments, getBookTopics
 
 ### v0.8 — SQLite Migration + Estabilidad (2026-03-02)
 - Migración de IndexedDB a SQLite server-side (@libsql/client, compatible Turso)

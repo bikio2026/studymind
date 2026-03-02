@@ -43,4 +43,11 @@ export const db = {
   getChatHistory: (documentId, topicId) => call('getChatHistory', { documentId, topicId }),
   saveChatHistory: (documentId, topicId, messages) => call('saveChatHistory', { documentId, topicId, messages }),
   deleteChatHistory: (documentId, topicId) => call('deleteChatHistory', { documentId, topicId }),
+
+  // Books
+  getBookByHash: (hash) => call('getBookByHash', { hash }),
+  getBook: (id) => call('getBook', { id }),
+  saveBook: (book) => call('saveBook', { book }),
+  getBookDocuments: (bookId) => call('getBookDocuments', { bookId }),
+  getBookTopics: (bookId) => call('getBookTopics', { bookId }),
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FileText, Scissors, X, Cpu, Zap, ChevronRight, BookOpen, Info } from 'lucide-react'
+import BookCoverageBar from './BookCoverageBar'
 
 const PROVIDERS = {
   claude: {
@@ -23,7 +24,7 @@ const STORAGE_KEYS = {
   model: 'studymind-llm-model',
 }
 
-export default function PageRangeDialog({ fileName, totalPages, status, onConfirm, onCancel }) {
+export default function PageRangeDialog({ fileName, totalPages, status, onConfirm, onCancel, bookStructure, processedSectionIds }) {
   // Raw string state — allows clearing fields and typing freely
   const [startRaw, setStartRaw] = useState('1')
   const [endRaw, setEndRaw] = useState(String(totalPages))
@@ -93,6 +94,20 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
 
   const providerAvailable = (key) => !status || status[key]
 
+  // Handle click on a pending section in the coverage bar
+  const handleSectionClick = (section) => {
+    if (section.pageStart && section.pageEnd) {
+      setStartRaw(String(Math.max(1, section.pageStart)))
+      setEndRaw(String(Math.min(section.pageEnd, totalPages)))
+    } else if (section.bookPage) {
+      // bookPage = printed page number, approximate PDF page
+      setStartRaw(String(Math.max(1, section.bookPage)))
+      setEndRaw(String(Math.min(section.bookPage + 30, totalPages)))
+    }
+  }
+
+  const hasBookData = bookStructure?.sections?.length > 0
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fadeIn">
       <div className="bg-surface rounded-2xl border border-surface-light shadow-2xl w-full max-w-md mx-4 overflow-hidden">
@@ -120,6 +135,23 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
             <p className="text-xs text-text-muted">{totalPages} páginas totales</p>
           </div>
         </div>
+
+        {/* Book coverage bar (when expanding an existing book) */}
+        {hasBookData && (
+          <div className="mx-6 mt-4 px-4 py-3 rounded-lg bg-surface-alt border border-surface-light/50">
+            <BookCoverageBar
+              bookStructure={bookStructure}
+              processedSectionIds={processedSectionIds}
+              variant="interactive"
+              totalPages={totalPages}
+              onSectionClick={handleSectionClick}
+            />
+            <p className="text-[10px] text-text-dim mt-2 flex items-center gap-1">
+              <Info className="w-3 h-3 shrink-0" />
+              Hacé click en una sección pendiente para seleccionar su rango.
+            </p>
+          </div>
+        )}
 
         {/* Page range inputs */}
         <div className="px-6 mt-5">
