@@ -101,18 +101,39 @@ export function findRelatedTopic(targetName, sections, topics) {
 }
 
 /**
- * Enrich an array of connection strings with navigation data.
+ * Normalize a connection entry from LLM.
+ * LLM sometimes returns strings, sometimes objects like {section, relationship/explanation}.
+ * Returns { displayText, targetHint } where targetHint is the section name for matching.
+ */
+function normalizeConnection(conn) {
+  if (typeof conn === 'string') {
+    return { displayText: conn, targetHint: parseConnectionTarget(conn) }
+  }
+  if (conn && typeof conn === 'object') {
+    const section = conn.section || ''
+    const explanation = conn.relationship || conn.explanation || ''
+    const displayText = explanation
+      ? `${section}: ${explanation}`
+      : section
+    return { displayText, targetHint: section || null }
+  }
+  return { displayText: String(conn ?? ''), targetHint: null }
+}
+
+/**
+ * Enrich an array of connection entries with navigation data.
+ * Handles both string and object formats from LLM.
  * Returns array of { text, targetTopicId, targetTitle } objects.
  */
 export function enrichConnections(connections, sections, topics) {
   if (!connections?.length) return []
 
-  return connections.map(connText => {
-    const targetName = parseConnectionTarget(connText)
-    const match = targetName ? findRelatedTopic(targetName, sections, topics) : null
+  return connections.map(conn => {
+    const { displayText, targetHint } = normalizeConnection(conn)
+    const match = targetHint ? findRelatedTopic(targetHint, sections, topics) : null
 
     return {
-      text: connText,
+      text: displayText,
       targetTopicId: match?.topicId || null,
       targetTitle: match?.title || null,
     }
