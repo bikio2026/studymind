@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.0",
     "lucide-react": "^0.575.0",
     "pdfjs-dist": "^4.7.76",
     "react": "^19.2.0",

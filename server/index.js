@@ -1,5 +1,9 @@
 import http from 'node:http'
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const { initDB, handleAction } = require('../lib/database.cjs')
 
 // Load .env
 try {
@@ -326,13 +330,41 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  // Database CRUD
+  if (req.url === '/api/db' && req.method === 'POST') {
+    const body = await readBody(req)
+    try {
+      const { action, params = {} } = JSON.parse(body)
+      if (!action) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: false, error: 'Missing action' }))
+        return
+      }
+      const result = await handleAction(action, params)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, data: result !== undefined ? result : null }))
+    } catch (err) {
+      console.error('[DB]', err.message)
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: false, error: err.message }))
+    }
+    return
+  }
+
   // 404
   res.writeHead(404, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify({ error: 'Not found' }))
 })
 
-server.listen(PORT, () => {
-  console.log(`StudyMind API running on http://localhost:${PORT}`)
-  console.log(`Claude API: ${process.env.ANTHROPIC_API_KEY ? 'configured' : 'not configured (set ANTHROPIC_API_KEY in .env)'}`)
-  console.log(`Groq API: ${process.env.GROQ_API_KEY ? 'configured' : 'not configured (set GROQ_API_KEY in .env)'}`)
+// Initialize SQLite before accepting requests
+initDB().then(() => {
+  server.listen(PORT, () => {
+    console.log(`StudyMind API running on http://localhost:${PORT}`)
+    console.log(`Database: ${process.env.TURSO_DATABASE_URL || 'file:./data/studymind.db'}`)
+    console.log(`Claude API: ${process.env.ANTHROPIC_API_KEY ? 'configured' : 'not configured (set ANTHROPIC_API_KEY in .env)'}`)
+    console.log(`Groq API: ${process.env.GROQ_API_KEY ? 'configured' : 'not configured (set GROQ_API_KEY in .env)'}`)
+  })
+}).catch(err => {
+  console.error('Failed to initialize database:', err)
+  process.exit(1)
 })

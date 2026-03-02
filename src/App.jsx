@@ -484,6 +484,38 @@ export default function App() {
         />
       )}
 
+      {/* Empty state: document exists but no data (interrupted processing) */}
+      {currentPhase === 'idle' && !currentError && (
+        <div className="max-w-md mx-auto mt-20 text-center animate-fadeIn">
+          <AlertCircle className="w-10 h-10 text-text-muted/40 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-text-dim mb-2">Sin datos de estudio</h3>
+          <p className="text-sm text-text-muted mb-6">
+            Este documento se guardó pero no tiene guías generadas. Podés volver a procesarlo o eliminarlo.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={async () => {
+                if (!activeDocumentId) return
+                const { deleteDocument } = useDocumentStore.getState()
+                await deleteDocument(activeDocumentId)
+                resetParser()
+                resetGuide()
+                clearActiveDocument()
+              }}
+              className="px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+            >
+              Eliminar documento
+            </button>
+            <button
+              onClick={handleBackToLibrary}
+              className="px-4 py-2 text-sm text-accent hover:text-accent-hover bg-accent/10 hover:bg-accent/20 rounded-lg transition-colors"
+            >
+              Volver a biblioteca
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Cancel confirmation dialog */}
       {showCancelConfirm && (
         <CancelConfirmDialog

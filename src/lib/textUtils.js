@@ -250,19 +250,47 @@ export function detectPageOffset(pages, tocEntries) {
   const normalizeForSearch = (text) =>
     text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
 
-  // Try first 5 TOC entries to find a match
-  for (const entry of tocEntries.slice(0, 5)) {
+  // Pre-normalize all pages once
+  const normalizedPages = pages.map(p => ({
+    pageNumber: p.pageNumber,
+    text: normalizeForSearch(p.text),
+  }))
+
+  // Pass 1: exact title match (try ALL entries, not just first 5)
+  for (const entry of tocEntries) {
     if (!entry.pageNumber) continue
     const searchTitle = normalizeForSearch(entry.title)
     if (searchTitle.length < 5) continue
 
-    // Search all pages — works with both full documents and filtered page ranges
-    for (let i = 0; i < pages.length; i++) {
-      const pageText = normalizeForSearch(pages[i].text)
-      if (pageText.includes(searchTitle)) {
-        const offset = pages[i].pageNumber - entry.pageNumber
-        console.log(`[StudyMind] Page offset detected: ${offset} (found "${entry.title}" at PDF page ${pages[i].pageNumber}, book page ${entry.pageNumber})`)
+    for (const page of normalizedPages) {
+      if (page.text.includes(searchTitle)) {
+        const offset = page.pageNumber - entry.pageNumber
+        console.log(`[StudyMind] Page offset detected: ${offset} (found "${entry.title}" at PDF page ${page.pageNumber}, book page ${entry.pageNumber})`)
         return offset
+      }
+    }
+  }
+
+  // Pass 2: partial match — use first significant words of the title
+  for (const entry of tocEntries) {
+    if (!entry.pageNumber) continue
+    const fullTitle = normalizeForSearch(entry.title)
+    // Strip common prefixes like "capitulo X:", "parte X:", etc.
+    const stripped = fullTitle.replace(/^(capitulo|parte|seccion|unidad|tema)\s+[\divxlc]+[.:)\s-]*/i, '').trim()
+    const words = (stripped || fullTitle).split(' ').filter(w => w.length > 2)
+    if (words.length < 2) continue
+
+    // Try matching first 4 words, then 3, then 2
+    for (let n = Math.min(words.length, 4); n >= 2; n--) {
+      const partial = words.slice(0, n).join(' ')
+      if (partial.length < 8) continue
+
+      for (const page of normalizedPages) {
+        if (page.text.includes(partial)) {
+          const offset = page.pageNumber - entry.pageNumber
+          console.log(`[StudyMind] Page offset detected (partial): ${offset} (matched "${partial}" at PDF page ${page.pageNumber}, book page ${entry.pageNumber})`)
+          return offset
+        }
       }
     }
   }

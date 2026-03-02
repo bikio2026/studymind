@@ -15,9 +15,10 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
     ? (localStorage.getItem('studymind-llm-provider') || 'claude')
     : 'claude'
 
-  // Set first topic as active when topics load
+  // Set first topic as active, or fallback if activeTopic is invalid (e.g. connection link to non-existent topic)
   useEffect(() => {
-    if (topics.length > 0 && !activeTopic) {
+    if (topics.length === 0) return
+    if (!activeTopic || !topics.find(t => t.id === activeTopic)) {
       setActiveTopic(topics[0].id)
     }
   }, [topics, activeTopic])

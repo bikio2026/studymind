@@ -19,15 +19,13 @@ export const useStudyStore = create((set, get) => ({
     const structure = await db.getStructure(documentId)
     const topics = await db.getTopics(documentId)
 
-    if (structure && topics.length > 0) {
+    if (structure) {
       // Restore topic IDs from IDB composite keys
-      // IDB stores: { id: "docId_sectionId", documentId, sectionId?, ...data }
-      // We need to recover the original sectionId as the topic's `id`
       const cleanTopics = topics.map(({ id: idbId, documentId: _docId, ...rest }) => {
-        // Prefer explicit sectionId (new format), fallback to extracting from composite key
         const sectionId = rest.sectionId || idbId.replace(`${documentId}_`, '')
         return { ...rest, id: sectionId, sectionId }
       })
+      // Even with 0 topics (interrupted after structure analysis), keep structure for resume
       set({ structure, topics: cleanTopics, phase: 'ready', error: null })
       return true // loaded from cache
     }

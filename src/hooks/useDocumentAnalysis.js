@@ -23,12 +23,20 @@ export function useDocumentAnalysis() {
         let tocEntries = parseTOCEntries(tocText)
         const pageOffset = detectPageOffset(document.pages, tocEntries)
 
-        // Filter TOC entries to selected page range BEFORE building structure
+        // Filter TOC entries to selected page range (overlap-based)
         if (pageRange && tocEntries.length > 0) {
           const beforeFilter = tocEntries.length
+          // Build end-page map for overlap detection
+          const sortedEntries = [...tocEntries].sort((a, b) => a.pageNumber - b.pageNumber)
+          const entryEndMap = new Map()
+          for (let i = 0; i < sortedEntries.length; i++) {
+            const nextPage = i < sortedEntries.length - 1 ? sortedEntries[i + 1].pageNumber + pageOffset : Infinity
+            entryEndMap.set(sortedEntries[i], nextPage)
+          }
           tocEntries = tocEntries.filter(entry => {
             const pdfPage = entry.pageNumber + pageOffset
-            return pdfPage >= pageRange.start && pdfPage <= pageRange.end
+            const entryEnd = entryEndMap.get(entry) || Infinity
+            return pdfPage <= pageRange.end && entryEnd > pageRange.start
           })
           console.log(`[StudyMind] TOC filtered by page range ${pageRange.start}-${pageRange.end}: ${beforeFilter} → ${tocEntries.length} entries`)
         }
@@ -105,12 +113,23 @@ export function useDocumentAnalysis() {
           }))
         }
 
-        // Filter LLM sections by page range if applicable
+        // Filter LLM sections by page range (overlap-based, not strict containment)
+        // A section is kept if its content overlaps with the selected range
         if (pageRange && parsed.sections.some(s => s.pageStart)) {
           const before = parsed.sections.length
+
+          // Build end-page map: each section "ends" where the next one begins
+          const withPages = parsed.sections.filter(s => s.pageStart).sort((a, b) => a.pageStart - b.pageStart)
+          const sectionEndMap = new Map()
+          for (let i = 0; i < withPages.length; i++) {
+            sectionEndMap.set(withPages[i], i < withPages.length - 1 ? withPages[i + 1].pageStart : Infinity)
+          }
+
           parsed.sections = parsed.sections.filter(s => {
-            if (!s.pageStart) return true // keep if no page info
-            return s.pageStart >= pageRange.start && s.pageStart <= pageRange.end
+            if (!s.pageStart) return true
+            const sectionEnd = sectionEndMap.get(s) || Infinity
+            // Overlap: [pageStart, sectionEnd) ∩ [rangeStart, rangeEnd] ≠ ∅
+            return s.pageStart <= pageRange.end && sectionEnd > pageRange.start
           })
           // Re-index ids after filtering
           parsed.sections = parsed.sections.map((s, i) => ({ ...s, id: i + 1 }))

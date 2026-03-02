@@ -1,239 +1,46 @@
-// IndexedDB wrapper for StudyMind persistence
-const DB_NAME = 'studymind'
-const DB_VERSION = 3
+// Database client — fetch wrapper over server-side SQLite
+// Same interface as the old IndexedDB implementation so stores/hooks don't change
 
-const STORES = {
-  documents: 'documents',
-  structures: 'structures',
-  topics: 'topics',
-  progress: 'progress',
-  pageData: 'pageData',
-  chatHistory: 'chatHistory',
-}
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
-let dbInstance = null
-
-function openDB() {
-  if (dbInstance) return Promise.resolve(dbInstance)
-
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result
-
-      // documents: {id, fileName, fileSize, totalPages, fullText, processedAt, status}
-      if (!db.objectStoreNames.contains(STORES.documents)) {
-        const docStore = db.createObjectStore(STORES.documents, { keyPath: 'id' })
-        docStore.createIndex('fileName', 'fileName', { unique: false })
-      }
-
-      // structures: {documentId, title, author, sections[]}
-      if (!db.objectStoreNames.contains(STORES.structures)) {
-        db.createObjectStore(STORES.structures, { keyPath: 'documentId' })
-      }
-
-      // topics: {id (documentId_sectionId), documentId, sectionId, ...guide data}
-      if (!db.objectStoreNames.contains(STORES.topics)) {
-        const topicStore = db.createObjectStore(STORES.topics, { keyPath: 'id' })
-        topicStore.createIndex('documentId', 'documentId', { unique: false })
-      }
-
-      // progress: {id (documentId_topicId), documentId, topicId, studied, quizScores[], resets[]}
-      if (!db.objectStoreNames.contains(STORES.progress)) {
-        const progressStore = db.createObjectStore(STORES.progress, { keyPath: 'id' })
-        progressStore.createIndex('documentId', 'documentId', { unique: false })
-      }
-
-      // pageData: {documentId, pages[], tocText?, pageRange?, provider, model}
-      // Stored separately from documents to keep Library loading fast
-      if (!db.objectStoreNames.contains(STORES.pageData)) {
-        db.createObjectStore(STORES.pageData, { keyPath: 'documentId' })
-      }
-
-      // chatHistory: {id (documentId_topicId), documentId, topicId, messages[], updatedAt}
-      if (!db.objectStoreNames.contains(STORES.chatHistory)) {
-        const chatStore = db.createObjectStore(STORES.chatHistory, { keyPath: 'id' })
-        chatStore.createIndex('documentId', 'documentId', { unique: false })
-      }
-    }
-
-    request.onsuccess = () => {
-      dbInstance = request.result
-      resolve(dbInstance)
-    }
-
-    request.onerror = () => reject(request.error)
+async function call(action, params = {}) {
+  const res = await fetch(`${API_BASE}/api/db`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, params }),
   })
+  const json = await res.json()
+  if (!json.ok) throw new Error(json.error || 'DB error')
+  return json.data
 }
-
-// Generic CRUD operations
-
-async function getAll(storeName) {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly')
-    const store = tx.objectStore(storeName)
-    const request = store.getAll()
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
-
-async function getByKey(storeName, key) {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly')
-    const store = tx.objectStore(storeName)
-    const request = store.get(key)
-    request.onsuccess = () => resolve(request.result || null)
-    request.onerror = () => reject(request.error)
-  })
-}
-
-async function getByIndex(storeName, indexName, value) {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly')
-    const store = tx.objectStore(storeName)
-    const index = store.index(indexName)
-    const request = index.getAll(value)
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
-
-async function put(storeName, data) {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    const request = store.put(data)
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
-
-async function deleteByKey(storeName, key) {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    const request = store.delete(key)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error)
-  })
-}
-
-async function deleteByIndex(storeName, indexName, value) {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    const index = store.index(indexName)
-    const cursorReq = index.openCursor(value)
-    cursorReq.onsuccess = (event) => {
-      const cursor = event.target.result
-      if (cursor) {
-        cursor.delete()
-        cursor.continue()
-      } else {
-        resolve()
-      }
-    }
-    cursorReq.onerror = () => reject(cursorReq.error)
-  })
-}
-
-// Domain-specific API
 
 export const db = {
   // Documents
-  async getAllDocuments() {
-    return getAll(STORES.documents)
-  },
-
-  async getDocument(id) {
-    return getByKey(STORES.documents, id)
-  },
-
-  async saveDocument(doc) {
-    return put(STORES.documents, doc)
-  },
-
-  // Find documents with matching content hash
-  async findByContentHash(hash) {
-    if (!hash) return []
-    const all = await getAll(STORES.documents)
-    return all.filter(d => d.contentHash === hash)
-  },
-
-  async deleteDocument(id) {
-    // Cascade: delete structure, topics, progress, pageData, chatHistory
-    await deleteByKey(STORES.documents, id)
-    await deleteByKey(STORES.structures, id)
-    await deleteByIndex(STORES.topics, 'documentId', id)
-    await deleteByIndex(STORES.progress, 'documentId', id)
-    await deleteByKey(STORES.pageData, id)
-    await deleteByIndex(STORES.chatHistory, 'documentId', id)
-  },
+  getAllDocuments: () => call('getAllDocuments'),
+  getDocument: (id) => call('getDocument', { id }),
+  saveDocument: (doc) => call('saveDocument', { doc }),
+  findByContentHash: (hash) => call('findByContentHash', { hash }),
+  deleteDocument: (id) => call('deleteDocument', { id }),
 
   // Structures
-  async getStructure(documentId) {
-    return getByKey(STORES.structures, documentId)
-  },
-
-  async saveStructure(documentId, structure) {
-    return put(STORES.structures, { documentId, ...structure })
-  },
+  getStructure: (documentId) => call('getStructure', { documentId }),
+  saveStructure: (documentId, structure) => call('saveStructure', { documentId, structure }),
 
   // Topics
-  async getTopics(documentId) {
-    return getByIndex(STORES.topics, 'documentId', documentId)
-  },
-
-  async saveTopic(documentId, topic) {
-    const id = `${documentId}_${topic.id}`
-    return put(STORES.topics, { ...topic, id, documentId })
-  },
-
-  async deleteTopics(documentId) {
-    return deleteByIndex(STORES.topics, 'documentId', documentId)
-  },
+  getTopics: (documentId) => call('getTopics', { documentId }),
+  saveTopic: (documentId, topic) => call('saveTopic', { documentId, topic }),
+  deleteTopics: (documentId) => call('deleteTopics', { documentId }),
 
   // Progress
-  async getProgress(documentId) {
-    return getByIndex(STORES.progress, 'documentId', documentId)
-  },
+  getProgress: (documentId) => call('getProgress', { documentId }),
+  saveProgress: (documentId, topicId, data) => call('saveProgress', { documentId, topicId, data }),
 
-  async saveProgress(documentId, topicId, data) {
-    const id = `${documentId}_${topicId}`
-    return put(STORES.progress, { id, documentId, topicId, ...data })
-  },
-
-  // Page data (for resume processing)
-  async savePageData(documentId, data) {
-    return put(STORES.pageData, { documentId, ...data })
-  },
-
-  async getPageData(documentId) {
-    return getByKey(STORES.pageData, documentId)
-  },
+  // Page data
+  savePageData: (documentId, data) => call('savePageData', { documentId, data }),
+  getPageData: (documentId) => call('getPageData', { documentId }),
 
   // Chat history
-  async getChatHistory(documentId, topicId) {
-    const id = `${documentId}_${topicId}`
-    const record = await getByKey(STORES.chatHistory, id)
-    return record?.messages || []
-  },
-
-  async saveChatHistory(documentId, topicId, messages) {
-    const id = `${documentId}_${topicId}`
-    return put(STORES.chatHistory, { id, documentId, topicId, messages, updatedAt: Date.now() })
-  },
-
-  async deleteChatHistory(documentId, topicId) {
-    const id = `${documentId}_${topicId}`
-    return deleteByKey(STORES.chatHistory, id)
-  },
+  getChatHistory: (documentId, topicId) => call('getChatHistory', { documentId, topicId }),
+  saveChatHistory: (documentId, topicId, messages) => call('saveChatHistory', { documentId, topicId, messages }),
+  deleteChatHistory: (documentId, topicId) => call('deleteChatHistory', { documentId, topicId }),
 }

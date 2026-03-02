@@ -1,272 +1,207 @@
 import { useState, useMemo } from 'react'
-import { BookOpen, ChevronRight, ChevronDown, HelpCircle } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronRight } from 'lucide-react'
 import { useProgressStore } from '../stores/progressStore'
 import { getMasteryLevel, MASTERY_LEVELS, getDocumentStats } from '../lib/proficiency'
 
-// Mini SVG ring to show mastery level
-function MasteryRing({ mastery, size = 14 }) {
-  const info = MASTERY_LEVELS[mastery]
-  const r = (size - 2) / 2
-  const circumference = 2 * Math.PI * r
-  const fillPct = info.order / 4
+// Relevance badge styles
+const RELEVANCE = {
+  core: { label: 'Core', cls: 'text-accent bg-accent/10 border-accent/20' },
+  supporting: { label: 'Soporte', cls: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
+  detail: { label: 'Detalle', cls: 'text-text-muted bg-surface-light border-surface-light/80' },
+}
+
+// Mastery dot styles
+const MASTERY_DOT = {
+  'sin-empezar': 'border-2 border-text-muted/30',
+  visto: 'bg-blue-400',
+  aprendiendo: 'bg-amber-400',
+  dominado: 'bg-emerald-400',
+  experto: 'bg-accent',
+}
+
+// Single topic item — always visible, always clickable
+function TopicItem({ topic, section, isActive, mastery, onClick }) {
+  const rel = RELEVANCE[topic.relevance] || RELEVANCE.detail
+  const dotCls = MASTERY_DOT[mastery] || MASTERY_DOT['sin-empezar']
 
   return (
-    <svg width={size} height={size} className="shrink-0">
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        strokeWidth={2}
-        className={info.ring}
-      />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        strokeWidth={2}
-        className={info.fill}
-        strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - fillPct)}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-    </svg>
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-2.5 rounded-lg transition-all
+        ${isActive
+          ? 'bg-accent/15 text-accent'
+          : 'hover:bg-surface-light/50 text-text-dim hover:text-text'
+        }`}
+    >
+      <div className="flex items-start gap-2.5">
+        {/* Mastery dot */}
+        <span className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1 ${dotCls}`} />
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-1.5">
+            <span className="text-[13px] leading-snug line-clamp-2">
+              {section?.title || topic.sectionTitle}
+            </span>
+            {isActive && <ChevronRight className="w-3 h-3 shrink-0 mt-0.5 text-accent" />}
+          </div>
+
+          <div className="flex items-center gap-2 mt-1">
+            {/* Relevance badge */}
+            <span className={`text-[9px] font-medium uppercase tracking-wide px-1.5 py-px rounded border ${rel.cls}`}>
+              {rel.label}
+            </span>
+
+            {/* Book page */}
+            {section?.bookPage && (
+              <span className="text-[10px] text-text-muted/50 font-mono">
+                p.{section.bookPage}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </button>
   )
 }
 
-// Build tree from flat sections using parentId
-function buildTree(sections) {
-  const map = {}
-  const roots = []
-
-  // Create nodes
-  for (const s of sections) {
-    map[s.id] = { ...s, children: [] }
-  }
-
-  // Assign children
-  for (const s of sections) {
-    if (s.parentId && map[s.parentId]) {
-      map[s.parentId].children.push(map[s.id])
-    } else {
-      roots.push(map[s.id])
-    }
-  }
-
-  return roots
-}
-
-// Compute aggregate mastery for a container node
-function getAggregatedMastery(node, topics, progress) {
-  const allLeaves = []
-  const collectLeaves = (n) => {
-    if (n.children.length === 0) {
-      allLeaves.push(n)
-    } else {
-      n.children.forEach(collectLeaves)
-    }
-  }
-  collectLeaves(node)
-
-  if (allLeaves.length === 0) return 'sin-empezar'
-
-  const masteries = allLeaves.map(leaf => {
-    const topic = topics.find(t => t.id === leaf.id)
-    if (!topic) return 'sin-empezar'
-    return getMasteryLevel(progress[leaf.id])
-  })
-
-  // Return the lowest mastery (weakest link)
-  const order = ['sin-empezar', 'visto', 'aprendiendo', 'dominado', 'experto']
-  let minIdx = 4
-  for (const m of masteries) {
-    const idx = order.indexOf(m)
-    if (idx < minIdx) minIdx = idx
-  }
-  return order[minIdx]
-}
-
-// Recursive tree node
-function TreeNode({ node, topics, progress, activeTopic, onSelectTopic, level = 0, defaultExpanded = false }) {
+// Collapsible chapter group (for multi-chapter mode)
+function ChapterGroup({ title, children, defaultExpanded = true, topicCount, masteredCount }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
-  const hasChildren = node.children.length > 0
-  const topic = topics.find(t => t.id === node.id)
-  const isActive = activeTopic === node.id
-  const isGenerated = !!topic
-  const isContainer = hasChildren
-
-  const mastery = isContainer
-    ? getAggregatedMastery(node, topics, progress)
-    : (isGenerated ? getMasteryLevel(progress[node.id]) : 'sin-empezar')
-
-  const handleClick = () => {
-    if (hasChildren) {
-      setExpanded(!expanded)
-    }
-    if (isGenerated) {
-      onSelectTopic(node.id)
-    }
-  }
-
-  // Indentation and styling per level
-  const indent = level === 0 ? '' : level === 1 ? 'pl-5' : 'pl-9'
-  const textSize = level === 0 ? 'text-sm' : level === 1 ? 'text-[13px]' : 'text-xs'
-  const fontWeight = level === 0 ? 'font-semibold' : ''
 
   return (
     <div>
-      {/* Level 0 separator */}
-      {level === 0 && (
-        <div className="border-t border-surface-light/30 first:border-t-0" />
-      )}
-
       <button
-        onClick={handleClick}
-        className={`
-          w-full text-left px-3 py-2 rounded-lg transition-all flex items-center gap-2
-          ${indent} ${textSize} ${fontWeight}
-          ${isActive
-            ? 'bg-accent/15 text-accent'
-            : isGenerated || isContainer
-              ? 'hover:bg-surface-light/50 text-text-dim hover:text-text'
-              : 'text-text-muted/40 cursor-default'}
-        `}
+        onClick={() => setExpanded(!expanded)}
+        className="w-full text-left px-3 py-2 flex items-center gap-2
+          hover:bg-surface-light/30 rounded-lg transition-colors"
       >
-        {/* Expand/collapse chevron for containers */}
-        {hasChildren ? (
-          <span className={`transition-transform duration-200 ${expanded ? '' : '-rotate-90'}`}>
-            <ChevronDown className="w-3.5 h-3.5 text-text-muted" />
-          </span>
-        ) : (
-          <span className="w-3.5" /> // spacer
-        )}
-
-        {/* Mastery ring */}
-        {isGenerated || isContainer ? (
-          <MasteryRing mastery={mastery} />
-        ) : (
-          <svg width={14} height={14} className="shrink-0">
-            <circle cx={7} cy={7} r={6} fill="none" strokeWidth={2} className="stroke-text-muted/20" />
-          </svg>
-        )}
-
-        {/* Title */}
-        <span className="truncate flex-1">{node.title}</span>
-
-        {/* Book page */}
-        {node.bookPage && (
-          <span className="text-[10px] text-text-muted/50 shrink-0 font-mono" title={`Página ${node.bookPage} del libro`}>
-            p.{node.bookPage}
-          </span>
-        )}
-
-        {/* Help icon for non-generated leaves */}
-        {!isGenerated && !isContainer && (
-          <span className="shrink-0 relative group/tip">
-            <HelpCircle className="w-3 h-3 text-text-muted/40 cursor-help" />
-            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1
-              text-[10px] leading-tight bg-surface border border-surface-light rounded-md shadow-lg
-              whitespace-nowrap opacity-0 group-hover/tip:opacity-100 transition-opacity
-              pointer-events-none z-30 text-text-muted">
-              Sin texto suficiente para generar guía
-            </span>
-          </span>
-        )}
-
-        {/* Active indicator */}
-        {isActive && <ChevronRight className="w-3 h-3 shrink-0 text-accent" />}
+        <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform duration-200
+          ${expanded ? '' : '-rotate-90'}`}
+        />
+        <span className="text-xs font-semibold text-text-dim truncate flex-1">
+          {title}
+        </span>
+        <span className="text-[10px] text-text-muted/50 shrink-0">
+          {masteredCount}/{topicCount}
+        </span>
       </button>
-
-      {/* Children */}
-      {hasChildren && expanded && (
-        <div className="animate-fadeIn">
-          {node.children.map(child => (
-            <TreeNode
-              key={child.id}
-              node={child}
-              topics={topics}
-              progress={progress}
-              activeTopic={activeTopic}
-              onSelectTopic={onSelectTopic}
-              level={level + 1}
-              defaultExpanded={level === 0} // auto-expand first level
-            />
-          ))}
+      {expanded && (
+        <div className="ml-1 animate-fadeIn">
+          {children}
         </div>
       )}
     </div>
   )
 }
 
-export default function DocumentOutline({ structure, topics, activeTopic, onSelectTopic, documentId }) {
+export default function DocumentOutline({ structure, topics, activeTopic, onSelectTopic }) {
   if (!structure) return null
 
   const progress = useProgressStore(s => s.progress)
   const stats = getDocumentStats(topics, progress)
 
-  // Build tree from flat sections
-  const tree = useMemo(() => {
-    const filteredSections = structure.sections.filter(s => s.level <= 3)
-    return buildTree(filteredSections)
-  }, [structure.sections])
+  // Group topics by their root chapter ancestor
+  const { groups, isSingleGroup } = useMemo(() => {
+    // Use string keys for safe matching (IDB may store string IDs)
+    const sectionMap = new Map(structure.sections.map(s => [String(s.id), s]))
 
-  // Mastery stats
+    function getRootAncestor(sectionId) {
+      let s = sectionMap.get(String(sectionId))
+      while (s?.parentId && sectionMap.has(String(s.parentId))) {
+        s = sectionMap.get(String(s.parentId))
+      }
+      return s
+    }
+
+    const groupMap = new Map()
+    for (const topic of topics) {
+      const section = sectionMap.get(String(topic.id))
+      const root = getRootAncestor(topic.id)
+      const key = root?.id ?? '_root'
+
+      if (!groupMap.has(key)) {
+        groupMap.set(key, { chapter: root, items: [] })
+      }
+      groupMap.get(key).items.push({ topic, section })
+    }
+
+    const groups = [...groupMap.values()]
+    return { groups, isSingleGroup: groups.length <= 1 }
+  }, [structure.sections, topics])
+
   const masteredCount = stats.byMastery.dominado + stats.byMastery.experto
   const masteryPct = stats.total > 0 ? Math.round((masteredCount / stats.total) * 100) : 0
 
   return (
     <div className="w-72 shrink-0 bg-surface-alt rounded-xl p-4 overflow-y-auto max-h-[calc(100vh-120px)]">
       {/* Document title */}
-      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-surface-light">
+      <div className="flex items-center gap-2 mb-3 pb-3 border-b border-surface-light">
         <BookOpen className="w-4 h-4 text-accent shrink-0" />
         <h2 className="text-sm font-semibold truncate" title={structure.title}>
           {structure.title}
         </h2>
       </div>
 
-      {/* Tree navigation */}
+      {/* Topic navigation */}
       <nav className="space-y-0.5">
-        {tree.map(node => (
-          <TreeNode
-            key={node.id}
-            node={node}
-            topics={topics}
-            progress={progress}
-            activeTopic={activeTopic}
-            onSelectTopic={onSelectTopic}
-            level={0}
-            defaultExpanded={true} // top level always expanded
-          />
-        ))}
+        {topics.length === 0 ? (
+          <p className="text-xs text-text-muted/60 text-center py-4">
+            Procesando temas...
+          </p>
+        ) : isSingleGroup ? (
+          // Single chapter: flat list of topics
+          (groups[0]?.items || []).map(({ topic, section }) => (
+            <TopicItem
+              key={topic.id}
+              topic={topic}
+              section={section}
+              isActive={activeTopic === topic.id}
+              mastery={getMasteryLevel(progress[topic.id])}
+              onClick={() => onSelectTopic(topic.id)}
+            />
+          ))
+        ) : (
+          // Multi-chapter: collapsible groups
+          groups.map(group => {
+            const groupMastered = group.items.filter(({ topic }) => {
+              const m = getMasteryLevel(progress[topic.id])
+              return m === 'dominado' || m === 'experto'
+            }).length
+
+            return (
+              <ChapterGroup
+                key={group.chapter?.id || '_root'}
+                title={group.chapter?.title || 'General'}
+                topicCount={group.items.length}
+                masteredCount={groupMastered}
+              >
+                {group.items.map(({ topic, section }) => (
+                  <TopicItem
+                    key={topic.id}
+                    topic={topic}
+                    section={section}
+                    isActive={activeTopic === topic.id}
+                    mastery={getMasteryLevel(progress[topic.id])}
+                    onClick={() => onSelectTopic(topic.id)}
+                  />
+                ))}
+              </ChapterGroup>
+            )
+          })
+        )}
       </nav>
 
-      {/* Stats */}
+      {/* Stats footer */}
       {topics.length > 0 && (
         <div className="mt-4 pt-3 border-t border-surface-light space-y-1.5 text-xs text-text-muted">
-          <div className="flex justify-between">
-            <span>Temas</span>
-            <span className="text-text-dim">{topics.length}</span>
-          </div>
           <div className="flex justify-between">
             <span>Dominados</span>
             <span className="text-text-dim">{masteredCount} / {topics.length}</span>
           </div>
-          {stats.avgProficiency > 0 && (
-            <div className="flex justify-between">
-              <span>Proficiencia</span>
-              <span className="text-text-dim">{stats.avgProficiency}%</span>
-            </div>
-          )}
-          {stats.quizzesTaken > 0 && (
-            <div className="flex justify-between">
-              <span>Quizzes</span>
-              <span className="text-text-dim">{stats.quizzesTaken} intentos</span>
-            </div>
-          )}
+
           {/* Mastery stacked bar */}
-          <div className="w-full h-2 bg-surface-light rounded-full overflow-hidden mt-2 flex">
+          <div className="w-full h-2 bg-surface-light rounded-full overflow-hidden flex">
             {['experto', 'dominado', 'aprendiendo', 'visto'].map(key => {
               const pct = stats.total > 0 ? (stats.byMastery[key] / stats.total) * 100 : 0
               if (pct === 0) return null
@@ -286,7 +221,7 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
               )
             })}
           </div>
-          <div className="text-[10px] text-text-muted/60 text-center mt-1">
+          <div className="text-[10px] text-text-muted/60 text-center">
             {masteryPct}% dominado
           </div>
         </div>

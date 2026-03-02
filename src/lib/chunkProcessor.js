@@ -115,6 +115,12 @@ export function extractSectionTextByPages(document, sections, sectionId, normFul
 
       // Only return if we got meaningful text; otherwise fall through to other strategies
       if (text.length >= 100) {
+        // Cap to prevent huge sections from freezing the browser
+        const MAX_SECTION_TEXT = 50000
+        if (text.length > MAX_SECTION_TEXT) {
+          console.warn(`[StudyMind] Strategy 1 capped "${section.title}": ${text.length} → ${MAX_SECTION_TEXT} chars`)
+          return { text: text.slice(0, MAX_SECTION_TEXT), confidence: 'high' }
+        }
         return { text, confidence: 'high' }
       }
     }
