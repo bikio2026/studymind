@@ -87,7 +87,26 @@ export function useDeepStudyGuide() {
 
     // Strip markdown code blocks
     let cleaned = fullText.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '')
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+    let jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+
+    // If no match, try repairing truncated JSON (LLM hit maxTokens before closing brackets)
+    if (!jsonMatch) {
+      let repaired = cleaned
+      const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length
+      const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length
+      if (openBrackets > 0 || openBraces > 0) {
+        // Trim trailing incomplete string/value
+        repaired = repaired.replace(/,\s*"[^"]*$/, '')  // trailing incomplete key
+        repaired = repaired.replace(/,\s*$/, '')          // trailing comma
+        for (let i = 0; i < openBrackets; i++) repaired += ']'
+        for (let i = 0; i < openBraces; i++) repaired += '}'
+        jsonMatch = repaired.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          console.log('[StudyMind] Repaired truncated JSON successfully')
+        }
+      }
+    }
+
     if (!jsonMatch) {
       console.error('[StudyMind] No JSON in response:', fullText.slice(0, 300))
       return null
@@ -165,7 +184,7 @@ export function useDeepStudyGuide() {
         provider,
         model: extractModel,
         promptVersion: 'chunkExtraction',
-        maxTokens: 2048,
+        maxTokens: 4096,
       })
 
       if (extract) {

@@ -91,6 +91,20 @@ export function useDocumentAnalysis() {
           id: s.id || i + 1,
         }))
 
+        // Compute pageStart from bookPage + offset (LLM only returns bookPage)
+        if (parsed.sections.some(s => s.bookPage) && document.pages?.length) {
+          const fakeEntries = parsed.sections
+            .filter(s => s.bookPage)
+            .map(s => ({ title: s.title, pageNumber: s.bookPage }))
+          const pageOffset = detectPageOffset(document.pages, fakeEntries)
+          console.log(`[StudyMind] LLM sections: computing pageStart from bookPage + offset (${pageOffset})`)
+
+          parsed.sections = parsed.sections.map(s => ({
+            ...s,
+            pageStart: s.bookPage ? s.bookPage + pageOffset : s.pageStart || null,
+          }))
+        }
+
         // Filter LLM sections by page range if applicable
         if (pageRange && parsed.sections.some(s => s.pageStart)) {
           const before = parsed.sections.length

@@ -9,7 +9,7 @@ import { normalizeText } from './chunkProcessor'
  *   "Ver también: Teoría del Consumidor"
  */
 export function parseConnectionTarget(connectionString) {
-  if (!connectionString) return null
+  if (!connectionString || typeof connectionString !== 'string') return null
 
   // Strategy 1: text between single quotes (most common from our prompt)
   const singleQuoteMatch = connectionString.match(/'([^']{3,})'/)

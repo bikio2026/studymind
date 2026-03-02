@@ -126,6 +126,12 @@ export function extractSectionTextByPages(document, sections, sectionId, normFul
   if (document.fullText) {
     const result = extractSectionTextStrict(document.fullText, sections, sectionId, normFullCached)
     if (result.text && result.text.length >= 100) {
+      // Cap to prevent a single section from absorbing the entire document
+      const MAX_SECTION_TEXT = 50000
+      if (result.text.length > MAX_SECTION_TEXT) {
+        console.warn(`[StudyMind] Strategy 2 capped "${section.title}": ${result.text.length} → ${MAX_SECTION_TEXT} chars`)
+        return { text: result.text.slice(0, MAX_SECTION_TEXT), confidence: result.confidence }
+      }
       return result
     }
   }
