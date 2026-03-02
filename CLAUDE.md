@@ -1,14 +1,14 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
-**Version actual**: v0.7
+**Version actual**: v0.8
 
 ## Qué es
-App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia local con IndexedDB y biblioteca de documentos.
+App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia server-side con SQLite (@libsql/client, compatible Turso) y biblioteca de documentos.
 
 ## Stack
 - Vite 7 + React 19 + JavaScript + Tailwind v4 (CSS-based)
 - Zustand 5 (estado global)
-- IndexedDB (persistencia local)
+- SQLite server-side (@libsql/client, compatible Turso)
 - pdfjs-dist (parseo PDF client-side)
 - LLM multi-provider: Claude API (Haiku/Sonnet), Groq (Llama 3.3 70B)
 
@@ -41,7 +41,8 @@ src/
     useDeepStudyGuide.js        — Pipeline multi-pass profundo (3 passes, secciones largas)
     useChat.js                  — Lógica de chat socrático multi-turn
   lib/
-    db.js                       — Wrapper IndexedDB (documents, structures, topics, progress, chatHistory)
+    db.js                       — Fetch wrapper para API SQLite (misma interfaz que antes)
+    connectionParser.js         — Parseo y enriquecimiento de conexiones LLM (strings y objetos)
     pdfExtractor.js             — Wrapper de pdfjs-dist
     promptBuilder.js            — Prompts para estructura y guía de estudio
     chunkProcessor.js           — Split de textos largos + fuzzy matching por sección
@@ -63,10 +64,13 @@ src/
   main.jsx                      — Entry point React
   index.css                     — Tailwind v4 theme
 server/index.js                 — API proxy local
+lib/
+  database.cjs                  — Módulo SQLite (@libsql/client, local file o Turso remoto)
 api/
   _shared.js                    — Config, system prompts, CORS
   analyze-claude.js             — Endpoint Claude (Vercel)
   analyze-groq.js               — Endpoint Groq (Vercel)
+  db.js                         — Endpoint SQLite serverless (CRUD vía action router)
   health.js                     — Health check proveedores
 ```
 
@@ -80,16 +84,20 @@ api/
      - Pass 1 (Haiku): Extracción de puntos clave por chunk (~8K tokens c/u)
      - Pass 2 (Sonnet, 16K output): Síntesis profunda (1500-3000 palabras, sub-secciones con ##)
      - Pass 3 (Haiku): Quiz 5-8 preguntas + conexiones
-5. **Persistencia** — Cada topic se guarda en IDB a medida que se genera
+5. **Persistencia** — Cada topic se guarda en SQLite (vía API /api/db) a medida que se genera
 
-## Persistencia (IndexedDB)
-| Store | Key | Contenido |
+## Persistencia (SQLite — @libsql/client)
+
+Local: `file:./data/studymind.db` | Producción: Turso remoto (`TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`)
+
+| Tabla | PK | Contenido |
 |-------|-----|-----------|
-| documents | id (UUID) | fileName, fileSize, totalPages, fullText, processedAt, status |
-| structures | documentId | title, author, sections[] |
-| topics | documentId_sectionId | sectionTitle, level, relevance, summary, keyConcepts, etc. |
-| progress | documentId_topicId | studied, quizScores[], resets[] |
-| chatHistory | documentId_topicId | messages[{role, content, timestamp}], updatedAt |
+| documents | id (UUID) | fileName, contentHash, processedAt, data (JSON blob) |
+| structures | document_id | data (JSON: title, author, sections[]) |
+| topics | id (docId_sectionId) | document_id, data (JSON: sectionTitle, relevance, summary, etc.) |
+| progress | id (docId_topicId) | document_id, data (JSON: studied, quizScores[], resets[]) |
+| page_data | document_id | data (JSON: texto extraído por página) |
+| chat_history | id (docId_topicId) | document_id, data (JSON: messages[]), updated_at |
 
 ## Capas de relevancia
 | Capa | Color | Significado |
@@ -123,6 +131,18 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 ---
 
 ## Changelog
+
+### v0.8 — SQLite Migration + Estabilidad (2026-03-02)
+- Migración de IndexedDB a SQLite server-side (@libsql/client, compatible Turso)
+- Nuevo endpoint /api/db (serverless) + lib/database.cjs (módulo compartido)
+- src/lib/db.js reescrito como fetch wrapper (misma interfaz, cero cambios en stores)
+- Fix crash al abrir "Conexiones con otros temas" (LLM devolvía objetos en vez de strings)
+- Fix browser freeze: cap 50K chars en extracción de texto por sección
+- Fix documentos incompletos: loadFromDB mantiene structure sin topics, permite resume
+- Pantalla "Sin datos" mejorada con botón Eliminar documento
+- detectPageOffset mejorado: prueba TODAS las entradas + partial matching
+- Filtro de secciones por rango cambiado a overlap-based
+- Guard en StudyGuide: activeTopic inválido cae al primer tema disponible
 
 ### v0.7 — Contenido Profundo Multi-Pass, Sidebar Jerárquico, Temas Visuales (2026-03-01)
 - Pipeline multi-pass para secciones largas (≥12K chars): 3 passes (Haiku→Sonnet→Haiku)
