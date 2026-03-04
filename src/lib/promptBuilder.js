@@ -1,248 +1,287 @@
+// --- Language instruction helpers ---
+
+const LANGUAGE_INSTRUCTIONS = {
+  es: 'Escribí en español rioplatense, claro y didáctico.',
+  en: 'Write in clear, didactic English.',
+  pt: 'Escreva em português claro e didático.',
+  fr: 'Écris en français clair et didactique.',
+  de: 'Schreibe in klarem, didaktischem Deutsch.',
+  it: 'Scrivi in italiano chiaro e didattico.',
+}
+
+function getLangInstruction(lang = 'es') {
+  return LANGUAGE_INSTRUCTIONS[lang] || LANGUAGE_INSTRUCTIONS.es
+}
+
 export function buildStructurePrompt(text, totalPages, pageRange = null) {
   // When processing a partial range with TOC injected
   if (pageRange) {
     const { start, end, originalTotal } = pageRange
-    return `Analizá el siguiente texto extraído de un PDF de ${originalTotal} páginas.
-El estudiante seleccionó las páginas ${start}-${end} (del PDF) para estudiar.
+    return `Analyze the following text extracted from a PDF of ${originalTotal} pages.
+The student selected pages ${start}-${end} (PDF pages) to study.
 
-Se incluye el ÍNDICE del documento (detectado automáticamente) seguido de muestras del contenido de las páginas seleccionadas.
+The TABLE OF CONTENTS (auto-detected) is included, followed by content samples from the selected pages.
 
-Identificá la ESTRUCTURA de las secciones DENTRO del rango seleccionado y devolvé ÚNICAMENTE un JSON válido:
+Identify the STRUCTURE of sections WITHIN the selected range and return ONLY valid JSON:
 
 {
-  "title": "Título del documento",
+  "title": "Document title (in the document's original language)",
   "author": null,
   "sections": [
-    { "id": 1, "title": "Nombre del capítulo/sección", "level": 1, "parentId": null, "bookPage": 120 },
-    { "id": 2, "title": "Nombre de subsección", "level": 2, "parentId": 1, "bookPage": 125 }
+    { "id": 1, "title": "Chapter/section name (original language)", "level": 1, "parentId": null, "bookPage": 120 },
+    { "id": 2, "title": "Subsection name (original language)", "level": 2, "parentId": 1, "bookPage": 125 }
   ]
 }
 
-REGLAS:
-- Usá el índice para identificar capítulos y secciones cuyo contenido cae DENTRO del rango de páginas ${start}-${end}.
-- NUMERACIÓN: Los números de página del índice son la NUMERACIÓN IMPRESA del libro, que puede diferir de la del PDF en varias páginas (portada, créditos, etc.). Usá tu criterio para mapear.
-- "bookPage": incluí el número de página IMPRESO del libro (del índice). Es solo referencia visual, no se usa para extracción.
-- level 1 = capítulo o parte principal, level 2 = sección, level 3 = subsección
-- IMPORTANTE: Solo incluí secciones cuyo contenido esté en las páginas seleccionadas. Si el índice menciona capítulos fuera del rango, NO los incluyas.
-- NO incluyas secciones estructurales: índice, bibliografía, glosario, agradecimientos, apéndices.
-- GRANULARIDAD: Detectá capítulos y secciones individuales. Objetivo: entre 8 y 25 secciones de nivel 1-2. Si detectás menos de 6, revisá si hay subdivisiones internas.
-- El JSON debe ser válido y parseable
+RULES:
+- Use the table of contents to identify chapters and sections whose content falls WITHIN pages ${start}-${end}.
+- PAGE NUMBERING: The page numbers in the TOC are the PRINTED book numbering, which may differ from PDF pages by several pages (cover, credits, etc.). Use your judgment to map them.
+- "bookPage": include the PRINTED book page number (from TOC). It's only a visual reference, not used for extraction.
+- level 1 = chapter or major part, level 2 = section, level 3 = subsection
+- IMPORTANT: Only include sections whose content is in the selected pages. If the TOC mentions chapters outside the range, DO NOT include them.
+- DO NOT include structural sections: table of contents, bibliography, glossary, acknowledgments, appendices, index.
+- Common chapter labels: Part/Parte, Chapter/Capítulo, Unit, Module, Section, Lesson, Topic, Appendix
+- GRANULARITY: Detect individual chapters and sections. Target: 8-25 sections at level 1-2. If you detect fewer than 6, look for internal subdivisions.
+- Section titles MUST be in the document's original language, exactly as they appear.
+- The JSON must be valid and parseable.
 
-TEXTO:
+TEXT:
 ${text}`
   }
 
   // Full range or no TOC — original behavior
-  return `Analizá el siguiente texto extraído de un PDF de ${totalPages} páginas.
+  return `Analyze the following text extracted from a PDF of ${totalPages} pages.
 
-Identificá la ESTRUCTURA del documento y devolvé ÚNICAMENTE un JSON válido:
+Identify the document STRUCTURE and return ONLY valid JSON:
 
 {
-  "title": "Título del documento",
+  "title": "Document title (in the document's original language)",
   "author": null,
   "sections": [
-    { "id": 1, "title": "Nombre del capítulo/sección", "level": 1, "parentId": null, "pageStart": 12, "pageEnd": 45 },
-    { "id": 2, "title": "Nombre de subsección", "level": 2, "parentId": 1, "pageStart": 12, "pageEnd": 25 }
+    { "id": 1, "title": "Chapter/section name (original language)", "level": 1, "parentId": null, "pageStart": 12, "pageEnd": 45 },
+    { "id": 2, "title": "Subsection name (original language)", "level": 2, "parentId": 1, "pageStart": 12, "pageEnd": 25 }
   ]
 }
 
-REGLAS:
-ESTRUCTURA JERÁRQUICA:
-- Si el libro tiene "Partes" (Parte I, Parte II, etc.): level 1 = Parte, level 2 = Capítulo, level 3 = Sección/Apartado
-- Si el libro NO tiene partes: level 1 = Capítulo, level 2 = Sección, level 3 = Subsección
-- parentId: referencia al id de la sección padre (null si es nivel 1)
+RULES:
+HIERARCHICAL STRUCTURE:
+- If the book has "Parts" (Part I, Parte I, etc.): level 1 = Part, level 2 = Chapter, level 3 = Section
+- If no parts: level 1 = Chapter/Unit/Module, level 2 = Section, level 3 = Subsection
+- parentId: reference to the parent section's id (null if level 1)
 
-- Usá el índice/tabla de contenidos si existe para identificar secciones
-- Si no hay índice formal, inferí las secciones por encabezados y cambios temáticos
-- Si podés inferir las páginas de inicio y fin de cada sección (del índice o del texto), incluí "pageStart" y "pageEnd". Si no podés determinarlas, omití esos campos.
-- IMPORTANTE: Solo incluí secciones cuyo CONTENIDO esté PRESENTE en el texto proporcionado. No inventes secciones.
-- NO incluyas secciones estructurales sin contenido propio: índice, bibliografía, glosario, agradecimientos, apéndices.
-- GRANULARIDAD: Detectá hasta 3 niveles de profundidad. Objetivo: 10-30 secciones totales incluyendo todos los niveles. Si detectás menos de 6, revisá si hay subdivisiones internas.
-- El JSON debe ser válido y parseable
+- Use the table of contents/index if it exists to identify sections
+- If there's no formal TOC, infer sections from headings and thematic changes
+- If you can infer start and end pages for each section (from TOC or text), include "pageStart" and "pageEnd". Otherwise omit them.
+- IMPORTANT: Only include sections whose CONTENT is PRESENT in the provided text. Do not invent sections.
+- DO NOT include structural sections without their own content: table of contents, bibliography, glossary, acknowledgments, appendices, index.
+- Common chapter labels: Part/Parte/Partie/Teil, Chapter/Capítulo/Chapitre/Kapitel, Unit, Module, Section, Lesson, Topic, Appendix
+- GRANULARITY: Detect up to 3 levels of depth. Target: 10-30 total sections including all levels. If you detect fewer than 6, look for internal subdivisions.
+- Section titles MUST be in the document's original language, exactly as they appear.
+- The JSON must be valid and parseable.
 
-TEXTO:
+TEXT:
 ${text}`
 }
 
-export function buildStudyGuidePrompt(sectionTitle, sectionText, documentTitle, allSectionTitles, truncated = false) {
+export function buildStudyGuidePrompt(sectionTitle, sectionText, documentTitle, allSectionTitles, truncated = false, language = 'es') {
   const truncNote = truncated
-    ? '\nNOTA: El texto fue recortado por ser muy extenso. Trabajá con lo disponible.'
+    ? '\nNOTE: Text was truncated due to length. Work with what is available.'
     : ''
 
-  return `Creá una guía de estudio para esta sección.
+  return `Create a study guide for this section. ${getLangInstruction(language)}
 
-DOCUMENTO: "${documentTitle}"
-SECCIÓN: "${sectionTitle}"
-OTRAS SECCIONES: ${allSectionTitles.join(' | ')}
+DOCUMENT: "${documentTitle}"
+SECTION: "${sectionTitle}"
+OTHER SECTIONS: ${allSectionTitles.join(' | ')}
 ${truncNote}
-Devolvé ÚNICAMENTE un JSON válido:
+Return ONLY valid JSON:
 
 {
   "relevance": "core",
-  "summary": "Resumen conceptual en 2-3 oraciones claras.",
-  "keyConcepts": ["concepto 1", "concepto 2", "concepto 3"],
-  "expandedExplanation": "Explicación didáctica de 3-5 párrafos, más clara que el texto original. Separar párrafos con doble salto de línea.",
-  "connections": ["Relación con 'otra sección': cómo se conectan"],
+  "summary": "Conceptual summary in 2-3 clear sentences.",
+  "keyConcepts": ["concept 1", "concept 2", "concept 3"],
+  "expandedExplanation": "Didactic explanation in 3-5 paragraphs, clearer than the original text. Separate paragraphs with double line breaks.",
+  "connections": ["Relationship with 'other section': how they connect"],
   "quiz": [
-    { "question": "Pregunta conceptual", "answer": "Respuesta clara" },
-    { "question": "Pregunta conceptual", "answer": "Respuesta clara" },
-    { "question": "Pregunta conceptual", "answer": "Respuesta clara" }
+    { "question": "Conceptual question", "answer": "Clear answer" },
+    { "question": "Conceptual question", "answer": "Clear answer" },
+    { "question": "Conceptual question", "answer": "Clear answer" }
   ]
 }
 
-CRITERIOS de "relevance":
-- "core": Concepto fundamental, sin esto no se entiende el resto
-- "supporting": Refuerza conceptos core, importante pero no esencial
-- "detail": Ejemplos, casos particulares, datos específicos
+RELEVANCE criteria:
+- "core": Fundamental concept, without this the rest cannot be understood
+- "supporting": Reinforces core concepts, important but not essential
+- "detail": Examples, particular cases, specific data
 
-IMPORTANTE: Basá tu guía EXCLUSIVAMENTE en el texto proporcionado abajo. No agregues información externa ni conceptos que no estén en el texto. Si el texto es insuficiente o irrelevante para la sección, respondé con:
+IMPORTANT: Base your guide EXCLUSIVELY on the text provided below. Do not add external information or concepts not in the text. If the text is insufficient or irrelevant for the section, respond with:
 { "relevance": "detail", "summary": "", "keyConcepts": [], "expandedExplanation": "", "connections": [], "quiz": [], "insufficientText": true }
 
-TEXTO DE LA SECCIÓN:
+SECTION TEXT:
 ${sectionText}`
 }
 
 // --- Multi-pass deep prompts ---
 
-export function buildChunkExtractionPrompt(chunkText, chunkIndex, totalChunks, sectionTitle) {
-  return `Estás analizando la parte ${chunkIndex + 1} de ${totalChunks} del texto de la sección "${sectionTitle}".
+export function buildChunkExtractionPrompt(chunkText, chunkIndex, totalChunks, sectionTitle, language = 'es') {
+  return `You are analyzing part ${chunkIndex + 1} of ${totalChunks} of the text for section "${sectionTitle}".
 
-Tu tarea es EXTRAER los puntos clave de este fragmento. No resumas: identificá y listá lo que el texto dice.
+Your task is to EXTRACT key points from this fragment. Do not summarize: identify and list what the text says.
 
-Devolvé ÚNICAMENTE un JSON válido:
+Return ONLY valid JSON:
 
 {
-  "concepts": ["concepto 1: breve definición", "concepto 2: breve definición"],
-  "arguments": ["argumento o razonamiento central presentado"],
-  "definitions": ["término — definición formal del texto"],
-  "examples": ["descripción del ejemplo y qué ilustra"],
-  "formulas": ["fórmula o modelo y qué representa"],
-  "rawNotes": "Síntesis de 400-600 palabras cubriendo TODO lo que este fragmento explica. Incluí los detalles importantes, no solo generalidades."
+  "concepts": ["concept 1: brief definition", "concept 2: brief definition"],
+  "arguments": ["central argument or reasoning presented"],
+  "definitions": ["term — formal definition from the text"],
+  "examples": ["description of the example and what it illustrates"],
+  "formulas": ["formula or model and what it represents"],
+  "rawNotes": "Synthesis of 400-600 words covering EVERYTHING this fragment explains. Include important details, not just generalities."
 }
 
-REGLAS:
-- SOLO extraé lo que está EXPLÍCITAMENTE en el texto. No agregues conocimiento externo.
-- Si no hay fórmulas, devolvé array vacío. Lo mismo para cada campo.
-- "definitions" son definiciones formales que el texto da, no inferencias tuyas.
-- "examples" incluye tanto ejemplos numéricos como casos ilustrativos.
-- "rawNotes" es lo más importante: debe capturar la sustancia del fragmento con suficiente detalle para que alguien que no leyó el original entienda qué dice.
-- Escribí en español.
+RULES:
+- ONLY extract what is EXPLICITLY in the text. Do not add external knowledge.
+- If there are no formulas, return empty array. Same for each field.
+- "definitions" are formal definitions the text provides, not your inferences.
+- "examples" includes both numerical examples and illustrative cases.
+- "rawNotes" is the most important: must capture the substance of the fragment in enough detail for someone who hasn't read the original to understand what it says.
+- ${getLangInstruction(language)}
 
-TEXTO (parte ${chunkIndex + 1}/${totalChunks}):
+TEXT (part ${chunkIndex + 1}/${totalChunks}):
 ${chunkText}`
 }
 
-export function buildDeepSynthesisPrompt(sectionTitle, chunkExtracts, documentTitle, allSectionTitles) {
+export function buildDeepSynthesisPrompt(sectionTitle, chunkExtracts, documentTitle, allSectionTitles, language = 'es') {
   const extractsText = chunkExtracts.map((ext, i) =>
-    `--- FRAGMENTO ${i + 1} ---\nConceptos: ${ext.concepts?.join('; ') || 'ninguno'}\nArgumentos: ${ext.arguments?.join('; ') || 'ninguno'}\nDefiniciones: ${ext.definitions?.join('; ') || 'ninguna'}\nEjemplos: ${ext.examples?.join('; ') || 'ninguno'}\nFórmulas: ${ext.formulas?.join('; ') || 'ninguna'}\nNotas: ${ext.rawNotes || ''}`
+    `--- FRAGMENT ${i + 1} ---\nConcepts: ${ext.concepts?.join('; ') || 'none'}\nArguments: ${ext.arguments?.join('; ') || 'none'}\nDefinitions: ${ext.definitions?.join('; ') || 'none'}\nExamples: ${ext.examples?.join('; ') || 'none'}\nFormulas: ${ext.formulas?.join('; ') || 'none'}\nNotes: ${ext.rawNotes || ''}`
   ).join('\n\n')
 
-  return `Sos un tutor universitario experto. A partir de los puntos clave extraídos de TODOS los fragmentos de la sección, creá una guía de estudio PROFUNDA y COMPLETA.
+  return `You are an expert university tutor. From the key points extracted from ALL fragments of the section, create a DEEP and COMPLETE study guide. ${getLangInstruction(language)}
 
-DOCUMENTO: "${documentTitle}"
-SECCIÓN: "${sectionTitle}"
-OTRAS SECCIONES DEL DOCUMENTO: ${allSectionTitles.join(' | ')}
+DOCUMENT: "${documentTitle}"
+SECTION: "${sectionTitle}"
+OTHER SECTIONS: ${allSectionTitles.join(' | ')}
 
-MATERIAL EXTRAÍDO DE ${chunkExtracts.length} FRAGMENTOS:
+EXTRACTED MATERIAL FROM ${chunkExtracts.length} FRAGMENTS:
 ${extractsText}
 
-Devolvé ÚNICAMENTE un JSON válido:
+Return ONLY valid JSON:
 
 {
   "relevance": "core",
-  "summary": "Resumen ejecutivo en 3-4 oraciones que capture la esencia.",
+  "summary": "Executive summary in 3-4 sentences capturing the essence.",
   "keyConcepts": [
-    { "term": "nombre del concepto", "definition": "definición clara y completa" }
+    { "term": "concept name", "definition": "clear and complete definition" }
   ],
-  "deepExplanation": "Explicación profunda y estructurada (ver instrucciones abajo).",
+  "deepExplanation": "Deep and structured explanation (see instructions below).",
   "definitions": [
-    { "term": "término", "definition": "definición formal" }
+    { "term": "term", "definition": "formal definition" }
   ],
-  "connections": ["Relación con 'otra sección': cómo se conectan"]
+  "connections": ["Relationship with 'other section': how they connect"]
 }
 
-INSTRUCCIONES PARA "deepExplanation":
-- Extensión: 1500-3000 palabras. Esto NO es un resumen, es una EXPLICACIÓN TUTORIAL completa.
-- Usá sub-títulos con formato "## Subtítulo" para organizar el contenido en bloques temáticos.
-- Para cada concepto principal:
-  1. Explicalo conceptualmente (¿qué es? ¿por qué importa?)
-  2. Si hay fórmulas/modelos, explicá paso a paso qué representa cada componente
-  3. Si hay ejemplos en el material, incluílos y explicá qué demuestran
-  4. Conectá con el concepto anterior/siguiente para dar coherencia
-- Usá analogías cuando ayuden a construir intuición.
-- Separar párrafos con doble salto de línea.
-- Escribí en español rioplatense, claro y didáctico.
-- TODO el contenido debe provenir del material extraído. No inventes información.
+INSTRUCTIONS FOR "deepExplanation":
+- Length: 1500-3000 words. This is NOT a summary, it's a COMPLETE TUTORIAL EXPLANATION.
+- Use sub-headings with "## Subtitle" format to organize content into thematic blocks.
+- For each main concept:
+  1. Explain it conceptually (what is it? why does it matter?)
+  2. If there are formulas/models, explain step by step what each component represents
+  3. If there are examples in the material, include them and explain what they demonstrate
+  4. Connect with the previous/next concept for coherence
+- Use analogies when they help build intuition.
+- Separate paragraphs with double line breaks.
+- ALL content must come from the extracted material. Do not invent information.
 
-CRITERIOS de "relevance":
-- "core": Concepto fundamental, sin esto no se entiende el resto del documento
-- "supporting": Refuerza conceptos core, importante pero no esencial
-- "detail": Ejemplos, casos particulares, datos específicos`
+RELEVANCE criteria:
+- "core": Fundamental concept, without this the rest of the document cannot be understood
+- "supporting": Reinforces core concepts, important but not essential
+- "detail": Examples, particular cases, specific data`
 }
 
-export function buildQuizFromSynthesisPrompt(sectionTitle, deepExplanation, allSectionTitles) {
-  return `A partir de la siguiente explicación profunda de la sección "${sectionTitle}", generá un quiz de autoevaluación y las conexiones con otras secciones.
+export function buildQuizFromSynthesisPrompt(sectionTitle, deepExplanation, allSectionTitles, language = 'es') {
+  return `From the following deep explanation of the section "${sectionTitle}", generate a self-assessment quiz and connections with other sections. ${getLangInstruction(language)}
 
-EXPLICACIÓN:
+EXPLANATION:
 ${deepExplanation}
 
-OTRAS SECCIONES: ${allSectionTitles.join(' | ')}
+OTHER SECTIONS: ${allSectionTitles.join(' | ')}
 
-Devolvé ÚNICAMENTE un JSON válido:
+Return ONLY valid JSON:
 
 {
   "quiz": [
-    { "question": "Pregunta conceptual que evalúe comprensión profunda", "answer": "Respuesta completa y clara" },
-    { "question": "Pregunta aplicada (caso práctico o ejemplo)", "answer": "Respuesta con razonamiento" }
+    { "question": "Conceptual question evaluating deep understanding", "answer": "Complete and clear answer" },
+    { "question": "Applied question (practical case or example)", "answer": "Answer with reasoning" }
   ],
-  "connections": ["Relación con 'otra sección': explicación de cómo se conectan"]
+  "connections": ["Relationship with 'other section': explanation of how they connect"]
 }
 
-REGLAS:
-- Generá entre 5 y 8 preguntas.
-- Mix obligatorio: al menos 3 conceptuales + 2 de aplicación/razonamiento.
-- Las preguntas conceptuales evalúan COMPRENSIÓN, no memorización de datos.
-- Las preguntas de aplicación plantean un escenario y piden analizar/predecir.
-- Las respuestas deben ser completas (3-5 oraciones), explicando el razonamiento.
-- Las conexiones deben referir a secciones del mismo documento, indicando la relación específica.
-- Escribí en español.`
+RULES:
+- Generate 5-8 questions.
+- Required mix: at least 3 conceptual + 2 application/reasoning.
+- Conceptual questions evaluate COMPREHENSION, not data memorization.
+- Application questions pose a scenario and ask to analyze/predict.
+- Answers should be complete (3-5 sentences), explaining the reasoning.
+- Connections should refer to sections in the same document, indicating the specific relationship.
+- ${getLangInstruction(language)}`
 }
 
-export function buildQuizEvaluationPrompt(question, modelAnswer, userAnswer, topicContext) {
-  return `Evaluá la respuesta del estudiante a esta pregunta de quiz.
+export function buildQuizEvaluationPrompt(question, modelAnswer, userAnswer, topicContext, language = 'es') {
+  return `Evaluate the student's answer to this quiz question. ${getLangInstruction(language)}
 
-CONTEXTO DEL TEMA:
-Sección: "${topicContext.sectionTitle}"
-Resumen: ${topicContext.summary}
+TOPIC CONTEXT:
+Section: "${topicContext.sectionTitle}"
+Summary: ${topicContext.summary}
 
-PREGUNTA: ${question}
+QUESTION: ${question}
 
-RESPUESTA MODELO (referencia): ${modelAnswer}
+MODEL ANSWER (reference): ${modelAnswer}
 
-RESPUESTA DEL ESTUDIANTE: ${userAnswer}
+STUDENT'S ANSWER: ${userAnswer}
 
-Devolvé ÚNICAMENTE un JSON válido:
+Return ONLY valid JSON:
 
 {
   "score": 75,
   "classification": "partial",
-  "feedback": "Explicación constructiva de 2-3 oraciones."
+  "feedback": "Constructive explanation in 2-3 sentences."
 }
 
-RÚBRICA:
-- score: 0-100. Evaluá COMPRENSIÓN CONCEPTUAL, no vocabulario exacto ni redacción.
+RUBRIC:
+- score: 0-100. Evaluate CONCEPTUAL COMPREHENSION, not exact vocabulary or wording.
 - classification: "correct" (≥80), "partial" (40-79), "incorrect" (<40)
-- feedback: Constructivo, en español rioplatense. Mencioná qué estuvo bien y qué faltó o fue incorrecto. Si el estudiante mostró comprensión parcial, reconocelo.
+- feedback: Constructive. Mention what was right and what was missing or incorrect. If the student showed partial understanding, acknowledge it.
 
-CRITERIOS DE EVALUACIÓN:
-- ¿Demuestra comprensión del concepto central? (40% del peso)
-- ¿Incluye los elementos clave de la respuesta modelo? (30%)
-- ¿El razonamiento es correcto, aunque use otras palabras? (20%)
-- ¿Hay errores factuales o confusiones importantes? (10% penalización)
+EVALUATION CRITERIA:
+- Does it demonstrate understanding of the central concept? (40% weight)
+- Does it include key elements from the model answer? (30%)
+- Is the reasoning correct, even if using different words? (20%)
+- Are there factual errors or important confusions? (10% penalty)
 
-IMPORTANTE:
-- Una respuesta puede ser correcta aunque use palabras diferentes a la respuesta modelo.
-- Si la respuesta es muy corta pero conceptualmente correcta, score alto con feedback sugiriendo expandir.
-- Si la respuesta es larga pero confusa o incorrecta, score bajo con feedback claro.
-- No seas condescendiente. Sé directo y útil.`
+IMPORTANT:
+- An answer can be correct even if it uses different words than the model answer.
+- If the answer is very short but conceptually correct, high score with feedback suggesting expansion.
+- If the answer is long but confused or incorrect, low score with clear feedback.
+- Don't be condescending. Be direct and useful.`
+}
+
+// --- Translation prompt for on-demand translation ---
+
+export function buildTranslationPrompt(contentJson, targetLanguage) {
+  const langName = { es: 'Spanish (Rioplatense)', en: 'English', pt: 'Portuguese', fr: 'French', de: 'German', it: 'Italian' }[targetLanguage] || targetLanguage
+
+  return `Translate the following study guide content to ${langName}. Maintain an academic, didactic tone.
+
+Return ONLY valid JSON with the EXACT same structure. Only translate the text values, keep all JSON keys unchanged.
+
+CONTENT TO TRANSLATE:
+${JSON.stringify(contentJson, null, 2)}
+
+RULES:
+- Translate ALL text values (summary, keyConcepts, expandedExplanation/deepExplanation, quiz questions and answers, connections, definitions).
+- Keep JSON keys in English (summary, keyConcepts, etc.) — do NOT translate keys.
+- Maintain the same academic tone and clarity.
+- For quiz questions and answers, ensure they make sense in the target language.
+- If there are technical terms, keep them and add the translation in parentheses if helpful.
+- Return valid, parseable JSON only.`
 }

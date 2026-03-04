@@ -9,6 +9,7 @@ import { useProgressStore } from './stores/progressStore'
 import { db } from './lib/db'
 import { getModelName } from './lib/models'
 import { detectTOCPages, extractTOCTextFromRegions } from './lib/textUtils'
+import { detectLanguage } from './lib/languageDetector'
 import ProcessingStatus from './components/ProcessingStatus'
 import StudyGuide from './components/StudyGuide'
 import Library from './components/Library'
@@ -18,7 +19,20 @@ import StopDialog from './components/StopDialog'
 import CancelConfirmDialog from './components/CancelConfirmDialog'
 import ThemeSelector from './components/ThemeSelector'
 import { useThemeStore } from './stores/themeStore'
+import { useTranslation } from './lib/useTranslation'
+import { useLanguageStore } from './lib/useTranslation'
 import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu, Loader2 } from 'lucide-react'
+
+// Jaccard similarity: word overlap between two strings (0-1)
+// Used as fallback for matching sections with legacy numeric IDs
+function jaccardSimilarity(a, b) {
+  const wordsA = new Set(a.split(/\s+/).filter(w => w.length > 1))
+  const wordsB = new Set(b.split(/\s+/).filter(w => w.length > 1))
+  if (wordsA.size === 0 && wordsB.size === 0) return 0
+  let intersection = 0
+  for (const w of wordsA) if (wordsB.has(w)) intersection++
+  return intersection / (wordsA.size + wordsB.size - intersection)
+}
 
 async function computeContentHash(fullText, totalPages) {
   const input = fullText.slice(0, 10000) + String(totalPages)
@@ -27,7 +41,36 @@ async function computeContentHash(fullText, totalPages) {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+function LoadingWithTimeout({ onBack, timeoutMs = 8000 }) {
+  const { t } = useTranslation()
+  const [showFallback, setShowFallback] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setShowFallback(true), timeoutMs)
+    return () => clearTimeout(timer)
+  }, [timeoutMs])
+
+  return (
+    <div className="flex flex-col items-center justify-center mt-20 gap-4">
+      <Loader2 className="w-6 h-6 text-accent animate-spin" />
+      {showFallback && (
+        <div className="text-center animate-fadeIn">
+          <p className="text-sm text-text-muted mb-2">{t('loading.timeout')}</p>
+          <button
+            onClick={onBack}
+            className="text-xs text-accent hover:underline"
+          >
+            {t('loading.backToLibrary')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
+  const { t } = useTranslation()
+  const uiLanguage = useLanguageStore(s => s.uiLanguage)
+  const setUILanguage = useLanguageStore(s => s.setUILanguage)
   const { document: parsedDoc, parsing, progress: parseProgress, error: parseError, parseFile, reset: resetParser } = usePDFParser()
   const { analyzing, error: structureError, analyzeStructure } = useDocumentAnalysis()
   const {
@@ -88,14 +131,23 @@ export default function App() {
     const currentPhase = useStudyStore.getState().phase
     if (currentPhase !== 'idle') return
 
-    // Set loading phase synchronously to avoid flash of "Sin datos" screen
-    const { setPhase } = useStudyStore.getState()
+    const { setPhase, setError } = useStudyStore.getState()
+    setError(null)
     setPhase('loading')
 
     const loadCached = async () => {
-      const cached = await loadFromDB(activeDocumentId)
-      if (cached) {
-        await loadProgress(activeDocumentId)
+      try {
+        const timeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout: la carga tardó más de 10s.')), 10000)
+        )
+        const cached = await Promise.race([loadFromDB(activeDocumentId), timeout])
+        if (cached) {
+          await Promise.race([loadProgress(activeDocumentId), timeout])
+        }
+      } catch (err) {
+        console.error('[StudyMind] loadCached error:', err.message)
+        useStudyStore.getState().setPhase('idle')
+        useStudyStore.getState().setError(err.message)
       }
     }
     loadCached()
@@ -128,15 +180,15 @@ export default function App() {
         const bookSections = book.structure?.sections || []
         for (const bs of bookSections) {
           for (const bt of bookTopics) {
-            // Same-import: sectionId matches book structure section.id
+            // Primary: exact stable ID match (works for new imports with stable IDs)
             if (String(bt.sectionId) === String(bs.id)) {
               processedSectionIds.add(bs.id)
               break
             }
-            // Cross-import: title containment check
+            // Fallback: Jaccard similarity ≥0.6 for legacy numeric IDs or cross-import matching
             const bsTitle = (bs.title || '').toLowerCase()
             const btTitle = (bt.sectionTitle || '').toLowerCase()
-            if (bsTitle && btTitle && (bsTitle.includes(btTitle) || btTitle.includes(bsTitle))) {
+            if (bsTitle && btTitle && jaccardSimilarity(bsTitle, btTitle) >= 0.6) {
               processedSectionIds.add(bs.id)
               break
             }
@@ -165,6 +217,7 @@ export default function App() {
       contentHash,
       provider: config.provider,
       model: config.model,
+      language: config.language || 'es',
       // Page range metadata (if partial processing)
       ...(doc.pageRange && {
         pageRange: doc.pageRange,
@@ -181,6 +234,7 @@ export default function App() {
       pageRange: doc.pageRange || null,
       provider: config.provider,
       model: config.model,
+      language: config.language || 'es',
     })
 
     setPhase('analyzing')
@@ -198,8 +252,8 @@ export default function App() {
       await renameDocument(documentId, struct.title)
     }
 
-    // --- Book entity: create or link ---
-    try {
+    // --- Book entity: create or link (skip if contentHash is null = independent mode) ---
+    if (contentHash) try {
       let book = await db.getBookByHash(contentHash)
       if (!book) {
         // Create new Book with structure (uses full structure from analysis)
@@ -215,6 +269,18 @@ export default function App() {
         console.log(`[StudyMind] Book created: "${struct.title || doc.fileName}" (${book.id})`)
       } else {
         console.log(`[StudyMind] Book found: "${book.fileName}" (${book.id}), linking document`)
+        // Merge new sections into book structure (union by stable ID, sorted by page)
+        const existingIds = new Set((book.structure?.sections || []).map(s => s.id))
+        const newSections = (struct.sections || []).filter(s => !existingIds.has(s.id))
+        if (newSections.length > 0) {
+          book.structure = {
+            ...book.structure,
+            sections: [...(book.structure.sections || []), ...newSections]
+              .sort((a, b) => (a.pageStart || 0) - (b.pageStart || 0)),
+          }
+          await db.updateBookStructure(book.id, book.structure)
+          console.log(`[StudyMind] Book structure merged: +${newSections.length} new sections (total: ${book.structure.sections.length})`)
+        }
       }
 
       // Link document to book
@@ -247,7 +313,10 @@ export default function App() {
   // Show page range dialog for a parsed doc
   const showPageRangeDialog = useCallback((doc, contentHash) => {
     setPhase('idle')
-    setPageRangeInfo({ parsedDoc: doc, contentHash })
+    // Auto-detect document language from full text
+    const detectedLang = detectLanguage(doc.fullText)
+    console.log(`[StudyMind] Language detected: ${detectedLang}`)
+    setPageRangeInfo({ parsedDoc: doc, contentHash, detectedLanguage: detectedLang })
   }, [setPhase])
 
   // Full processing pipeline for new PDF — with deduplication check
@@ -281,6 +350,14 @@ export default function App() {
     const { parsedDoc: doc, contentHash } = duplicateInfo
     setDuplicateInfo(null)
     showPageRangeDialog(doc, contentHash)
+  }, [duplicateInfo, showPageRangeDialog])
+
+  const handleDuplicateProceedIndependent = useCallback(() => {
+    if (!duplicateInfo) return
+    const { parsedDoc: doc } = duplicateInfo
+    setDuplicateInfo(null)
+    // Pass null contentHash to skip book linking entirely
+    showPageRangeDialog(doc, null)
   }, [duplicateInfo, showPageRangeDialog])
 
   const handleDuplicateOpen = useCallback((docId) => {
@@ -419,6 +496,7 @@ export default function App() {
       const config = {
         provider: pageData.provider || docRecord.provider,
         model: pageData.model || docRecord.model,
+        language: pageData.language || docRecord.language || 'es',
       }
 
       const result = await generateGuides(activeDocumentId, doc, structure, config, existingTopicIds)
@@ -436,6 +514,15 @@ export default function App() {
       setResuming(false)
     }
   }, [activeDocumentId, structure, topics, generateGuides])
+
+  // Stop dialog: resume (cancel the stop, continue processing)
+  const handleStopResume = useCallback(async () => {
+    if (!activeDocumentId) return
+    const { updateDocumentStatus } = useDocumentStore.getState()
+    await updateDocumentStatus(activeDocumentId, 'incomplete')
+    setPhase('ready')
+    setTimeout(() => handleResumeProcessing(), 100)
+  }, [activeDocumentId, setPhase, handleResumeProcessing])
 
   // Cross-import navigation: switch to another document from the same book
   const handleNavigateToDocument = useCallback((documentId) => {
@@ -464,7 +551,7 @@ export default function App() {
     }
 
     if (file.type !== 'application/pdf') {
-      setExpandError('Solo se aceptan archivos PDF')
+      setExpandError(t('upload.pdfOnly'))
       setExpandingBookData(null)
       return
     }
@@ -487,7 +574,7 @@ export default function App() {
     // Validate hash matches the book
     if (contentHash !== expandingBookData.book.contentHash) {
       setPhase('idle')
-      setExpandError('Este PDF no coincide con el libro original. Asegurate de subir el mismo archivo.')
+      setExpandError(t('upload.mismatch'))
       setExpandingBookData(null)
       return
     }
@@ -507,7 +594,19 @@ export default function App() {
     : analyzing ? 'analyzing'
     : phase
 
-  const currentError = parseError || structureError || guideError
+  const storeError = useStudyStore(s => s.error)
+  const currentError = parseError || structureError || guideError || storeError
+
+  // Force-reset if loading hangs for more than 10s
+  useEffect(() => {
+    if (currentPhase !== 'loading') return
+    const timer = setTimeout(() => {
+      console.error('[StudyMind] Loading timeout — forcing reset after 10s')
+      useStudyStore.getState().setPhase('idle')
+      useStudyStore.getState().setError('La carga tardó más de 10s. Puede haber un problema con este documento.')
+    }, 10000)
+    return () => clearTimeout(timer)
+  }, [currentPhase])
 
   // Library view (no active document)
   if (!activeDocumentId) {
@@ -518,7 +617,23 @@ export default function App() {
             <BookOpen className="w-6 h-6 text-accent" />
             <h1 className="text-xl font-bold tracking-tight">StudyMind</h1>
           </div>
-          <ThemeSelector />
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 text-xs text-text-muted bg-surface-alt rounded-lg border border-surface-light/30 overflow-hidden">
+              <button
+                onClick={() => setUILanguage('es')}
+                className={`px-2 py-1 transition-colors ${uiLanguage === 'es' ? 'bg-accent text-white font-medium' : 'hover:text-text'}`}
+              >
+                ES
+              </button>
+              <button
+                onClick={() => setUILanguage('en')}
+                className={`px-2 py-1 transition-colors ${uiLanguage === 'en' ? 'bg-accent text-white font-medium' : 'hover:text-text'}`}
+              >
+                EN
+              </button>
+            </div>
+            <ThemeSelector />
+          </div>
         </header>
 
         <Library onNewDocument={handleFileSelect} />
@@ -528,6 +643,7 @@ export default function App() {
           <DuplicateDialog
             existingDocs={duplicateInfo.existingDocs}
             onProceed={handleDuplicateProceed}
+            onProceedIndependent={handleDuplicateProceedIndependent}
             onOpen={handleDuplicateOpen}
             onCancel={handleDuplicateCancel}
           />
@@ -543,6 +659,7 @@ export default function App() {
             onCancel={handlePageRangeCancel}
             bookStructure={pageRangeInfo.bookData?.book?.structure}
             processedSectionIds={pageRangeInfo.bookData?.processedSectionIds}
+            detectedLanguage={pageRangeInfo.detectedLanguage}
           />
         )}
       </div>
@@ -560,7 +677,7 @@ export default function App() {
           <button
             onClick={handleBackToLibrary}
             className="p-1.5 rounded-lg hover:bg-surface-alt transition-colors text-text-muted hover:text-text"
-            title="Volver a biblioteca"
+            title={t('guide.backToLibrary')}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -577,6 +694,20 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 text-xs text-text-muted bg-surface-alt rounded-lg border border-surface-light/30 overflow-hidden">
+            <button
+              onClick={() => setUILanguage('es')}
+              className={`px-2 py-1 transition-colors ${uiLanguage === 'es' ? 'bg-accent text-white font-medium' : 'hover:text-text'}`}
+            >
+              ES
+            </button>
+            <button
+              onClick={() => setUILanguage('en')}
+              className={`px-2 py-1 transition-colors ${uiLanguage === 'en' ? 'bg-accent text-white font-medium' : 'hover:text-text'}`}
+            >
+              EN
+            </button>
+          </div>
           <ThemeSelector />
           {activeDoc?.model && (
             <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1 rounded-lg flex items-center gap-1.5 border border-surface-light/30">
@@ -586,7 +717,7 @@ export default function App() {
                 <>
                   <span className="text-text-muted/50">·</span>
                   <span className="text-text-muted/70">
-                    {new Date(activeDoc.processedAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
+                    {new Date(activeDoc.processedAt).toLocaleDateString(uiLanguage === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short' })}
                   </span>
                 </>
               )}
@@ -597,7 +728,7 @@ export default function App() {
               onClick={handleBackToLibrary}
               className="text-xs text-text-muted hover:text-text flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-surface-alt transition-colors border border-transparent hover:border-surface-light"
             >
-              <RotateCcw className="w-3 h-3" /> Cancelar
+              <RotateCcw className="w-3 h-3" /> {t('common.cancel')}
             </button>
           )}
         </div>
@@ -608,13 +739,13 @@ export default function App() {
         <div className="max-w-lg mx-auto mb-6 p-4 rounded-xl bg-error/10 border border-error/20 flex items-start gap-3 animate-fadeIn">
           <AlertCircle className="w-5 h-5 text-error shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm text-error font-medium">Error en el procesamiento</p>
+            <p className="text-sm text-error font-medium">{t('app.processingError')}</p>
             <p className="text-xs text-text-dim mt-1">{currentError}</p>
             <button
               onClick={handleBackToLibrary}
               className="text-xs text-accent mt-2 hover:underline"
             >
-              Volver a la biblioteca
+              {t('guide.backToLibrary')}
             </button>
           </div>
         </div>
@@ -622,9 +753,7 @@ export default function App() {
 
       {/* Loading state (document activated, loading from cache) */}
       {currentPhase === 'loading' && (
-        <div className="flex items-center justify-center mt-20">
-          <Loader2 className="w-6 h-6 text-accent animate-spin" />
-        </div>
+        <LoadingWithTimeout onBack={handleBackToLibrary} />
       )}
 
       {/* Processing states */}
@@ -634,6 +763,7 @@ export default function App() {
           progress={currentPhase === 'parsing' ? parseProgress : genProgress}
           generatingTopic={generatingTopic}
           onStop={currentPhase === 'generating' ? handleStopProcessing : undefined}
+          pageRange={activeDoc?.pageRange}
         />
       )}
 
@@ -642,6 +772,7 @@ export default function App() {
         <StopDialog
           generated={topics.length}
           total={genProgress?.total || 0}
+          onResume={handleStopResume}
           onKeep={handleStopKeep}
           onDelete={handleStopDelete}
         />
@@ -659,6 +790,7 @@ export default function App() {
           bookData={bookData}
           onExpandCoverage={handleExpandCoverage}
           onNavigateToDocument={handleNavigateToDocument}
+          language={activeDoc?.language || 'es'}
         />
       )}
 
@@ -666,9 +798,9 @@ export default function App() {
       {currentPhase === 'idle' && !currentError && (
         <div className="max-w-md mx-auto mt-20 text-center animate-fadeIn">
           <AlertCircle className="w-10 h-10 text-text-muted/40 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-text-dim mb-2">Sin datos de estudio</h3>
+          <h3 className="text-lg font-semibold text-text-dim mb-2">{t('app.noStudyData')}</h3>
           <p className="text-sm text-text-muted mb-6">
-            Este documento se guardó pero no tiene guías generadas. Podés volver a procesarlo o eliminarlo.
+            {t('app.noStudyDataDesc')}
           </p>
           <div className="flex items-center justify-center gap-3">
             <button
@@ -682,13 +814,13 @@ export default function App() {
               }}
               className="px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
             >
-              Eliminar documento
+              {t('app.deleteDocument')}
             </button>
             <button
               onClick={handleBackToLibrary}
               className="px-4 py-2 text-sm text-accent hover:text-accent-hover bg-accent/10 hover:bg-accent/20 rounded-lg transition-colors"
             >
-              Volver a biblioteca
+              {t('guide.backToLibrary')}
             </button>
           </div>
         </div>

@@ -1,15 +1,18 @@
-import { AlertTriangle, FileText, ArrowRight, RotateCcw, X } from 'lucide-react'
+import { AlertTriangle, FileText, ArrowRight, RotateCcw, Unlink, X } from 'lucide-react'
 import { MODEL_DISPLAY } from '../lib/models'
+import { useTranslation } from '../lib/useTranslation'
 
-function formatDate(ts) {
+function formatDate(ts, locale) {
   if (!ts) return '—'
-  return new Date(ts).toLocaleDateString('es-AR', {
+  return new Date(ts).toLocaleDateString(locale, {
     day: 'numeric', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
 }
 
-export default function DuplicateDialog({ existingDocs, onProceed, onOpen, onCancel }) {
+export default function DuplicateDialog({ existingDocs, onProceed, onProceedIndependent, onOpen, onCancel }) {
+  const { t, language } = useTranslation()
+  const locale = language === 'en' ? 'en-US' : 'es-AR'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn">
@@ -21,8 +24,8 @@ export default function DuplicateDialog({ existingDocs, onProceed, onOpen, onCan
               <AlertTriangle className="w-5 h-5 text-warning" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-text">Documento duplicado</h2>
-              <p className="text-xs text-text-muted">Este PDF ya fue procesado antes</p>
+              <h2 className="text-base font-bold text-text">{t('duplicate.title')}</h2>
+              <p className="text-xs text-text-muted">{t('duplicate.subtitle')}</p>
             </div>
           </div>
           <button
@@ -35,7 +38,7 @@ export default function DuplicateDialog({ existingDocs, onProceed, onOpen, onCan
 
         {/* Existing runs */}
         <div className="px-6 py-3">
-          <p className="text-xs text-text-dim mb-2 font-medium">Procesamientos existentes:</p>
+          <p className="text-xs text-text-dim mb-2 font-medium">{t('duplicate.existing')}</p>
           <div className="space-y-2 max-h-40 overflow-y-auto">
             {existingDocs.map(doc => (
               <button
@@ -47,7 +50,7 @@ export default function DuplicateDialog({ existingDocs, onProceed, onOpen, onCan
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium text-text truncate">{doc.fileName}</p>
                   <p className="text-[10px] text-text-muted">
-                    {MODEL_DISPLAY[doc.model] || doc.model || 'Modelo desconocido'} · {formatDate(doc.processedAt)}
+                    {MODEL_DISPLAY[doc.model] || doc.model || t('duplicate.unknownModel')} · {formatDate(doc.processedAt, locale)}
                   </p>
                 </div>
                 <ArrowRight className="w-3.5 h-3.5 text-text-muted group-hover:text-accent shrink-0 transition-colors" />
@@ -63,13 +66,20 @@ export default function DuplicateDialog({ existingDocs, onProceed, onOpen, onCan
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
           >
             <RotateCcw className="w-4 h-4" />
-            Procesar de nuevo
+            {t('duplicate.processAgain')}
+          </button>
+          <button
+            onClick={onProceedIndependent}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-text-muted border border-surface-light hover:text-text hover:border-accent/40 hover:bg-surface-alt transition-colors"
+          >
+            <Unlink className="w-4 h-4" />
+            {t('duplicate.processIndependent')}
           </button>
           <button
             onClick={onCancel}
             className="w-full px-4 py-2 rounded-xl text-sm text-text-muted hover:text-text hover:bg-surface-alt transition-colors"
           >
-            Cancelar
+            {t('common.cancel')}
           </button>
         </div>
       </div>

@@ -13,16 +13,19 @@ const CHAT_MODELS = {
 // Build context message with topic info for the LLM
 function buildContextMessage(topic) {
   const parts = [
-    `TEMA: "${topic.sectionTitle}"`,
-    `RESUMEN: ${topic.summary}`,
+    `TOPIC: "${topic.sectionTitle}"`,
+    `SUMMARY: ${topic.summary}`,
   ]
   if (topic.keyConcepts?.length) {
-    parts.push(`CONCEPTOS CLAVE: ${topic.keyConcepts.join(', ')}`)
+    const conceptList = topic.keyConcepts.map(c => typeof c === 'object' ? c.term : c)
+    parts.push(`KEY CONCEPTS: ${conceptList.join(', ')}`)
   }
-  if (topic.expandedExplanation) {
-    // Trim to ~2000 chars to save tokens
+  if (topic.deepExplanation) {
+    const explanation = topic.deepExplanation.slice(0, 2000)
+    parts.push(`TOPIC EXPLANATION:\n${explanation}`)
+  } else if (topic.expandedExplanation) {
     const explanation = topic.expandedExplanation.slice(0, 2000)
-    parts.push(`EXPLICACIÓN DEL TEMA:\n${explanation}`)
+    parts.push(`TOPIC EXPLANATION:\n${explanation}`)
   }
   return parts.join('\n\n')
 }
@@ -37,7 +40,7 @@ function trimHistory(messages) {
   ]
 }
 
-export function useChat(documentId, topicId, topic, provider = 'claude') {
+export function useChat(documentId, topicId, topic, provider = 'claude', language = 'es') {
   const { streamRequest, cancel: cancelStream } = useLLMStream()
 
   const chat = useChatStore(s => s.chats[topicId])
@@ -79,7 +82,7 @@ export function useChat(documentId, topicId, topic, provider = 'claude') {
     if (currentMessages.length === 1) {
       // First message: inject topic context with the question
       apiMessages = [
-        { role: 'user', content: `${contextMsg}\n\n---\n\nPREGUNTA DEL ESTUDIANTE: ${userText.trim()}` }
+        { role: 'user', content: `${contextMsg}\n\n---\n\nSTUDENT QUESTION: ${userText.trim()}` }
       ]
     } else {
       // Subsequent messages: use trimmed history with context in first message
@@ -87,7 +90,7 @@ export function useChat(documentId, topicId, topic, provider = 'claude') {
       apiMessages = history.map((msg, i) => {
         if (i === 0 && msg.role === 'user') {
           // Prepend context to the first user message
-          return { role: 'user', content: `${contextMsg}\n\n---\n\nPREGUNTA DEL ESTUDIANTE: ${msg.content}` }
+          return { role: 'user', content: `${contextMsg}\n\n---\n\nSTUDENT QUESTION: ${msg.content}` }
         }
         return { role: msg.role, content: msg.content }
       })
@@ -102,6 +105,7 @@ export function useChat(documentId, topicId, topic, provider = 'claude') {
         promptVersion: 'chat',
         maxTokens: 1024,
         messages: apiMessages,
+        language,
         onToken: (text) => {
           setStreamingContent(topicId, text)
         },
@@ -119,7 +123,7 @@ export function useChat(documentId, topicId, topic, provider = 'claude') {
       }
       clearStreaming(topicId)
     }
-  }, [topic, topicId, documentId, provider, loading, streamRequest, addUserMessage, addAssistantMessage, setStreamingContent, clearStreaming])
+  }, [topic, topicId, documentId, provider, language, loading, streamRequest, addUserMessage, addAssistantMessage, setStreamingContent, clearStreaming])
 
   // Cancel current streaming
   const cancel = useCallback(() => {

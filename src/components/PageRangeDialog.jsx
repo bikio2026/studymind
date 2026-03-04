@@ -1,20 +1,22 @@
 import { useState } from 'react'
-import { FileText, Scissors, X, Cpu, Zap, ChevronRight, BookOpen, Info } from 'lucide-react'
+import { FileText, Scissors, X, Cpu, Zap, ChevronRight, BookOpen, Info, Globe } from 'lucide-react'
 import BookCoverageBar from './BookCoverageBar'
+import { getLanguageName, getSupportedLanguages } from '../lib/languageDetector'
+import { useTranslation } from '../lib/useTranslation'
 
 const PROVIDERS = {
   claude: {
     name: 'Claude',
     models: [
-      { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', desc: 'Rápido y económico' },
-      { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4', desc: 'Mayor calidad' },
+      { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', descKey: 'pageRange.fastEconomical' },
+      { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4', descKey: 'pageRange.higherQuality' },
     ],
   },
   groq: {
     name: 'Groq',
     models: [
-      { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', desc: 'Rápido, tier gratuito' },
-      { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', desc: 'Ultra rápido' },
+      { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', descKey: 'pageRange.fastFreeTier' },
+      { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', descKey: 'pageRange.ultraFast' },
     ],
   },
 }
@@ -24,7 +26,9 @@ const STORAGE_KEYS = {
   model: 'studymind-llm-model',
 }
 
-export default function PageRangeDialog({ fileName, totalPages, status, onConfirm, onCancel, bookStructure, processedSectionIds }) {
+export default function PageRangeDialog({ fileName, totalPages, status, onConfirm, onCancel, bookStructure, processedSectionIds, detectedLanguage }) {
+  const { t } = useTranslation()
+
   // Raw string state — allows clearing fields and typing freely
   const [startRaw, setStartRaw] = useState('1')
   const [endRaw, setEndRaw] = useState(String(totalPages))
@@ -36,6 +40,9 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
   const [model, setModel] = useState(
     () => localStorage.getItem(STORAGE_KEYS.model) || 'claude-haiku-4-5-20251001'
   )
+
+  // Content language (auto-detected, overridable)
+  const [language, setLanguage] = useState(detectedLanguage || 'es')
 
   // TOC configuration
   const [tocOpen, setTocOpen] = useState(false)
@@ -69,7 +76,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
         }
       }
 
-      onConfirm(startPage, endPage, { provider, model }, tocConfig)
+      onConfirm(startPage, endPage, { provider, model, language }, tocConfig)
     }
   }
 
@@ -118,8 +125,8 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
               <Scissors className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h3 className="font-semibold text-text">Configuración</h3>
-              <p className="text-xs text-text-muted">Páginas y modelo de IA</p>
+              <h3 className="font-semibold text-text">{t('pageRange.title')}</h3>
+              <p className="text-xs text-text-muted">{t('pageRange.subtitle')}</p>
             </div>
           </div>
           <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-surface-light transition-colors">
@@ -132,7 +139,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
           <FileText className="w-5 h-5 text-text-muted shrink-0" />
           <div className="min-w-0">
             <p className="text-sm text-text truncate">{fileName}</p>
-            <p className="text-xs text-text-muted">{totalPages} páginas totales</p>
+            <p className="text-xs text-text-muted">{totalPages} {t('pageRange.totalPages')}</p>
           </div>
         </div>
 
@@ -148,17 +155,17 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
             />
             <p className="text-[10px] text-text-dim mt-2 flex items-center gap-1">
               <Info className="w-3 h-3 shrink-0" />
-              Hacé click en una sección pendiente para seleccionar su rango.
+              {t('pageRange.clickPending')}
             </p>
           </div>
         )}
 
         {/* Page range inputs */}
         <div className="px-6 mt-5">
-          <label className="text-xs font-medium text-text-dim mb-2 block">Rango de páginas del PDF</label>
+          <label className="text-xs font-medium text-text-dim mb-2 block">{t('pageRange.range')}</label>
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">Desde</label>
+              <label className="text-xs text-text-muted mb-1 block">{t('pageRange.from')}</label>
               <input
                 type="number"
                 min={1}
@@ -173,7 +180,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
             </div>
             <span className="text-text-muted mt-5">—</span>
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">Hasta</label>
+              <label className="text-xs text-text-muted mb-1 block">{t('pageRange.to')}</label>
               <input
                 type="number"
                 min={1}
@@ -190,7 +197,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
 
           <p className="text-[10px] text-text-dim mt-1.5 flex items-center gap-1">
             <Info className="w-3 h-3 shrink-0" />
-            Usá los números de página del PDF, no los del libro impreso.
+            {t('pageRange.pdfPageNote')}
           </p>
 
           {/* Quick presets */}
@@ -200,14 +207,14 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                 ${isFullRange ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
             >
-              Todo
+              {t('pageRange.all')}
             </button>
             <button
               onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(50, totalPages))) }}
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                 ${startPage === 1 && endPage === Math.min(50, totalPages) ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
             >
-              Primeras 50
+              {t('pageRange.first50')}
             </button>
             {totalPages > 100 && (
               <button
@@ -215,7 +222,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                   ${startPage === 1 && endPage === Math.min(100, totalPages) ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
               >
-                Primeras 100
+                {t('pageRange.first100')}
               </button>
             )}
             {totalPages > 200 && (
@@ -224,7 +231,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                   ${startPage === 1 && endPage === Math.min(150, totalPages) ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
               >
-                Primeras 150
+                {t('pageRange.first150')}
               </button>
             )}
           </div>
@@ -234,7 +241,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
         <div className="px-6 mt-5">
           <label className="text-xs font-medium text-text-dim mb-2 block flex items-center gap-1.5">
             <Cpu className="w-3.5 h-3.5" />
-            Modelo de IA
+            {t('pageRange.aiModel')}
           </label>
           <div className="flex items-center gap-2">
             {/* Provider selector */}
@@ -265,7 +272,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
             >
               {PROVIDERS[provider].models.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name} — {m.desc}
+                  {m.name} — {t(m.descKey)}
                 </option>
               ))}
             </select>
@@ -275,7 +282,34 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
           {provider === 'groq' && pageCount > 30 && (
             <p className="text-[10px] text-warning mt-1.5 flex items-center gap-1">
               <Zap className="w-3 h-3" />
-              Groq tiene un límite de 12K tokens/min (tier gratuito). Con muchas páginas puede fallar.
+              {t('pageRange.groqWarning')}
+            </p>
+          )}
+        </div>
+
+        {/* Language selector */}
+        <div className="px-6 mt-5">
+          <label className="text-xs font-medium text-text-dim mb-2 block flex items-center gap-1.5">
+            <Globe className="w-3.5 h-3.5" />
+            {t('pageRange.contentLanguage')}
+          </label>
+          <div className="flex items-center gap-2">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="flex-1 bg-surface-alt text-text px-3 py-1.5 rounded-lg border border-surface-light text-xs cursor-pointer focus:outline-none focus:border-accent transition-colors"
+            >
+              {getSupportedLanguages().map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name}{code === detectedLanguage ? ' ' + t('pageRange.detected') : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          {detectedLanguage && language !== detectedLanguage && (
+            <p className="text-[10px] text-amber-500/80 mt-1.5 flex items-center gap-1">
+              <Info className="w-3 h-3 shrink-0" />
+              {t('pageRange.detectedLangNote', { lang: getLanguageName(detectedLanguage) })}
             </p>
           )}
         </div>
@@ -288,7 +322,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
           >
             <ChevronRight className={`w-3.5 h-3.5 transition-transform ${tocOpen ? 'rotate-90' : ''}`} />
             <BookOpen className="w-3.5 h-3.5" />
-            <span className="font-medium">Configuración del índice</span>
+            <span className="font-medium">{t('pageRange.tocConfig')}</span>
           </button>
 
           {tocOpen && (
@@ -301,7 +335,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
                   className="accent-accent"
                 />
                 <span className="text-xs text-text-muted group-hover:text-text transition-colors">
-                  Detección automática
+                  {t('pageRange.tocAuto')}
                 </span>
               </label>
 
@@ -313,28 +347,28 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
                   className="accent-accent"
                 />
                 <span className="text-xs text-text-muted group-hover:text-text transition-colors">
-                  Indicar manualmente
+                  {t('pageRange.tocManual')}
                 </span>
               </label>
 
               {tocMode === 'manual' && (
                 <div className="flex items-center gap-2 pl-5">
-                  <span className="text-xs text-text-dim">Págs.</span>
+                  <span className="text-xs text-text-dim">{t('pageRange.tocPages')}</span>
                   <input
                     type="number" min={1} max={totalPages}
                     value={tocStartRaw}
                     onChange={(e) => setTocStartRaw(e.target.value)}
-                    placeholder="Desde"
+                    placeholder={t('pageRange.from')}
                     className="w-16 px-2 py-1 rounded bg-surface-alt border border-surface-light text-text text-xs text-center font-mono
                       focus:outline-none focus:border-accent transition-colors
                       [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
-                  <span className="text-text-muted text-xs">a</span>
+                  <span className="text-text-muted text-xs">{t('pageRange.tocTo')}</span>
                   <input
                     type="number" min={1} max={totalPages}
                     value={tocEndRaw}
                     onChange={(e) => setTocEndRaw(e.target.value)}
-                    placeholder="Hasta"
+                    placeholder={t('pageRange.to')}
                     className="w-16 px-2 py-1 rounded bg-surface-alt border border-surface-light text-text text-xs text-center font-mono
                       focus:outline-none focus:border-accent transition-colors
                       [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -350,13 +384,13 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
                   className="accent-accent"
                 />
                 <span className="text-xs text-text-muted group-hover:text-text transition-colors">
-                  Sin índice
+                  {t('pageRange.tocNone')}
                 </span>
               </label>
 
               <p className="text-[10px] text-text-dim flex items-start gap-1 mt-1">
                 <Info className="w-3 h-3 shrink-0 mt-0.5" />
-                <span>Si tu libro tiene un índice al inicio o al final, indicá las páginas para mejorar la detección de capítulos.</span>
+                <span>{t('pageRange.tocHelp')}</span>
               </p>
             </div>
           )}
@@ -366,15 +400,15 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
         <div className="px-6 pt-5 pb-5 mt-3 flex items-center justify-between">
           <span className="text-sm text-text-dim">
             {isFullRange
-              ? `${totalPages} páginas`
-              : `${pageCount} de ${totalPages} páginas`}
+              ? t('pageRange.pages', { n: totalPages })
+              : t('pageRange.pagesOfTotal', { n: pageCount, total: totalPages })}
           </span>
           <div className="flex gap-2">
             <button
               onClick={onCancel}
               className="px-4 py-2 text-sm text-text-muted hover:text-text transition-colors"
             >
-              Cancelar
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleConfirm}
@@ -382,7 +416,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
               className="px-5 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent/90
                 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Procesar {pageCount} pág{pageCount !== 1 ? 's' : ''}.
+              {t('pageRange.process', { n: pageCount, s: pageCount !== 1 ? 's' : '' })}
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { Route, ChevronRight, Star, BookOpen, Layers } from 'lucide-react'
 import { useProgressStore } from '../stores/progressStore'
 import { buildLearningPath, getPhaseStats, getNextRecommendation } from '../lib/learningPath'
 import { MASTERY_LEVELS } from '../lib/proficiency'
+import { useTranslation } from '../lib/useTranslation'
 
 const PHASE_CONFIG = {
   core: { color: 'text-core', bg: 'bg-core-bg', border: 'border-core/30', icon: Star },
@@ -9,7 +10,14 @@ const PHASE_CONFIG = {
   detail: { color: 'text-detail', bg: 'bg-detail-bg', border: 'border-detail/30', icon: Layers },
 }
 
+const phaseTransKey = {
+  core: 'path.fundamentals',
+  supporting: 'path.reinforcement',
+  detail: 'path.deepening',
+}
+
 function PathNode({ item, isActive, onClick }) {
+  const { t } = useTranslation()
   const masteryInfo = MASTERY_LEVELS[item.mastery]
   const phaseConf = PHASE_CONFIG[item.phase]
 
@@ -40,13 +48,14 @@ function PathNode({ item, isActive, onClick }) {
 
       {/* Mastery label */}
       <span className={`text-[10px] ${masteryInfo.color} shrink-0`}>
-        {item.mastery !== 'sin-empezar' ? masteryInfo.label : ''}
+        {item.mastery !== 'sin-empezar' ? t('mastery.' + item.mastery) : ''}
       </span>
     </button>
   )
 }
 
 export default function LearningPath({ topics, activeTopic, onSelectTopic }) {
+  const { t } = useTranslation()
   const progress = useProgressStore(s => s.progress)
   const path = buildLearningPath(topics, progress)
   const phases = getPhaseStats(topics, progress)
@@ -72,11 +81,11 @@ export default function LearningPath({ topics, activeTopic, onSelectTopic }) {
         >
           <div className="flex items-center gap-2 mb-1">
             <Route className="w-3.5 h-3.5 text-accent" />
-            <span className="text-[11px] font-medium text-accent">Próximo recomendado</span>
+            <span className="text-[11px] font-medium text-accent">{t('path.nextRecommended')}</span>
             <ChevronRight className="w-3 h-3 text-accent/50 ml-auto group-hover:translate-x-0.5 transition-transform" />
           </div>
           <p className="text-xs text-text-dim truncate">{recommendation.topic.sectionTitle}</p>
-          <p className="text-[10px] text-text-muted mt-0.5">{recommendation.reason}</p>
+          <p className="text-[10px] text-text-muted mt-0.5">{t(recommendation.reason, recommendation.reasonParams ? { ...recommendation.reasonParams, phase: t(recommendation.reasonParams.phase) } : undefined)}</p>
         </button>
       )}
 
@@ -90,7 +99,7 @@ export default function LearningPath({ topics, activeTopic, onSelectTopic }) {
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5">
                   <PhaseIcon className={`w-3 h-3 ${conf.color}`} />
-                  <span className={`text-[11px] font-medium ${conf.color}`}>{phase.label}</span>
+                  <span className={`text-[11px] font-medium ${conf.color}`}>{t(phase.labelKey || phaseTransKey[phase.key])}</span>
                 </div>
                 <span className="text-[10px] text-text-muted">
                   {phase.mastered}/{phase.total}
@@ -120,7 +129,7 @@ export default function LearningPath({ topics, activeTopic, onSelectTopic }) {
             <div className={`flex items-center gap-1.5 mb-1 px-1`}>
               <PhaseIcon className={`w-3 h-3 ${conf.color}`} />
               <span className={`text-[10px] font-semibold uppercase tracking-wider ${conf.color}`}>
-                {items[0].phaseLabel}
+                {t(phaseTransKey[phase])}
               </span>
             </div>
             <div className="space-y-0.5 relative">

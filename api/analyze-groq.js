@@ -17,8 +17,8 @@ module.exports = async function handler(req, res) {
 
   const body = await readBody(req)
   try {
-    const { prompt, messages: inputMessages, model = 'llama-3.3-70b-versatile', promptVersion = 'structure', maxTokens = 4096 } = JSON.parse(body)
-    const systemPrompt = getSystemPrompt(promptVersion)
+    const { prompt, messages: inputMessages, model = 'llama-3.3-70b-versatile', promptVersion = 'structure', maxTokens = 4096, language } = JSON.parse(body)
+    const systemPrompt = getSystemPrompt(promptVersion, language)
     const apiKey = process.env.GROQ_API_KEY
 
     if (!apiKey) {

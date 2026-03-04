@@ -12,6 +12,7 @@
 export const MASTERY_LEVELS = {
   'sin-empezar': {
     label: 'Sin empezar',
+    labelKey: 'mastery.sin-empezar',
     color: 'text-text-muted/40',
     bg: 'bg-text-muted/5',
     ring: 'stroke-text-muted/20',
@@ -20,6 +21,7 @@ export const MASTERY_LEVELS = {
   },
   visto: {
     label: 'Visto',
+    labelKey: 'mastery.visto',
     color: 'text-blue-400',
     bg: 'bg-blue-400/10',
     ring: 'stroke-blue-400/30',
@@ -28,6 +30,7 @@ export const MASTERY_LEVELS = {
   },
   aprendiendo: {
     label: 'Aprendiendo',
+    labelKey: 'mastery.aprendiendo',
     color: 'text-amber-400',
     bg: 'bg-amber-400/10',
     ring: 'stroke-amber-400/30',
@@ -36,6 +39,7 @@ export const MASTERY_LEVELS = {
   },
   dominado: {
     label: 'Dominado',
+    labelKey: 'mastery.dominado',
     color: 'text-emerald-400',
     bg: 'bg-emerald-400/10',
     ring: 'stroke-emerald-400/30',
@@ -44,6 +48,7 @@ export const MASTERY_LEVELS = {
   },
   experto: {
     label: 'Experto',
+    labelKey: 'mastery.experto',
     color: 'text-accent',
     bg: 'bg-accent/10',
     ring: 'stroke-accent/30',
@@ -135,17 +140,23 @@ export function getDocumentStats(topics, progress) {
 export const DEPTH_LEVELS = {
   resumen: {
     label: 'Resumen',
+    labelKey: 'depth.resumen',
     description: 'Vista rápida: solo el resumen',
+    descriptionKey: 'depth.resumen.desc',
     icon: '1',
   },
   intermedio: {
     label: 'Intermedio',
+    labelKey: 'depth.intermedio',
     description: 'Resumen + conceptos clave + conexiones',
+    descriptionKey: 'depth.intermedio.desc',
     icon: '2',
   },
   completo: {
     label: 'Completo',
+    labelKey: 'depth.completo',
     description: 'Todo el contenido incluyendo explicación expandida',
+    descriptionKey: 'depth.completo.desc',
     icon: '3',
   },
 }

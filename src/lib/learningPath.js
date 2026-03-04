@@ -15,9 +15,9 @@ export function buildLearningPath(topics, progress) {
   if (!topics?.length) return []
 
   const phases = [
-    { key: 'core', label: 'Fundamentos', relevance: 'core' },
-    { key: 'supporting', label: 'Refuerzo', relevance: 'supporting' },
-    { key: 'detail', label: 'Profundización', relevance: 'detail' },
+    { key: 'core', labelKey: 'path.fundamentals', relevance: 'core' },
+    { key: 'supporting', labelKey: 'path.reinforcement', relevance: 'supporting' },
+    { key: 'detail', labelKey: 'path.deepening', relevance: 'detail' },
   ]
 
   const path = []
@@ -30,7 +30,7 @@ export function buildLearningPath(topics, progress) {
         topic,
         mastery,
         phase: phase.key,
-        phaseLabel: phase.label,
+        phaseLabel: phase.labelKey,
       })
     }
   }
@@ -62,7 +62,8 @@ export function getNextRecommendation(topics, progress, currentTopicId = null) {
   if (unstarted) {
     return {
       topic: unstarted.topic,
-      reason: `Siguiente tema ${unstarted.phaseLabel.toLowerCase()} sin empezar`,
+      reason: 'path.nextUnstarted',
+      reasonParams: { phase: unstarted.phaseLabel },
       phase: unstarted.phase,
     }
   }
@@ -74,7 +75,7 @@ export function getNextRecommendation(topics, progress, currentTopicId = null) {
   if (onlyViewed) {
     return {
       topic: onlyViewed.topic,
-      reason: 'Ya lo viste, probá el quiz para afianzar',
+      reason: 'path.tryQuiz',
       phase: onlyViewed.phase,
     }
   }
@@ -86,7 +87,7 @@ export function getNextRecommendation(topics, progress, currentTopicId = null) {
   if (needsReview) {
     return {
       topic: needsReview.topic,
-      reason: 'Necesita repaso — intentá mejorar el quiz',
+      reason: 'path.needsReview',
       phase: needsReview.phase,
     }
   }
@@ -98,7 +99,7 @@ export function getNextRecommendation(topics, progress, currentTopicId = null) {
   if (canImprove) {
     return {
       topic: canImprove.topic,
-      reason: 'Dominado — un repaso más para ser experto',
+      reason: 'path.canImprove',
       phase: canImprove.phase,
     }
   }
@@ -112,9 +113,9 @@ export function getNextRecommendation(topics, progress, currentTopicId = null) {
  */
 export function getPhaseStats(topics, progress) {
   const phases = [
-    { key: 'core', label: 'Fundamentos' },
-    { key: 'supporting', label: 'Refuerzo' },
-    { key: 'detail', label: 'Profundización' },
+    { key: 'core', labelKey: 'path.fundamentals' },
+    { key: 'supporting', labelKey: 'path.reinforcement' },
+    { key: 'detail', labelKey: 'path.deepening' },
   ]
 
   return phases.map(phase => {

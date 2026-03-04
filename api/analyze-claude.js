@@ -17,8 +17,8 @@ module.exports = async function handler(req, res) {
 
   const body = await readBody(req)
   try {
-    const { prompt, messages: inputMessages, model = 'claude-haiku-4-5-20251001', promptVersion = 'structure', maxTokens = 4096 } = JSON.parse(body)
-    const systemPrompt = getSystemPrompt(promptVersion)
+    const { prompt, messages: inputMessages, model = 'claude-haiku-4-5-20251001', promptVersion = 'structure', maxTokens = 4096, language } = JSON.parse(body)
+    const systemPrompt = getSystemPrompt(promptVersion, language)
     const apiKey = process.env.ANTHROPIC_API_KEY
 
     if (!apiKey) {

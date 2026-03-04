@@ -154,7 +154,7 @@ const server = http.createServer(async (req, res) => {
         },
         body: JSON.stringify({
           model,
-          max_tokens: Math.min(maxTokens, 8192),
+          max_tokens: Math.min(maxTokens, promptVersion === 'deepSynthesis' ? 16384 : 8192),
           stream: true,
           system: systemPrompt,
           messages: inputMessages || [{ role: 'user', content: prompt }],
@@ -239,7 +239,7 @@ const server = http.createServer(async (req, res) => {
         },
         body: JSON.stringify({
           model,
-          max_tokens: Math.min(maxTokens, 8192),
+          max_tokens: Math.min(maxTokens, promptVersion === 'deepSynthesis' ? 16384 : 8192),
           stream: true,
           messages: inputMessages
             ? [{ role: 'system', content: systemPrompt }, ...inputMessages]

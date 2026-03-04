@@ -2,17 +2,19 @@ import { useState, useEffect, useRef } from 'react'
 import { Loader2, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react'
 import { db } from '../lib/db'
 import { extractSectionTextByPages } from '../lib/chunkProcessor'
+import { useTranslation } from '../lib/useTranslation'
 
 const CONFIDENCE_BADGE = {
-  high: { label: 'Coincidencia alta', icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
-  medium: { label: 'Coincidencia media', icon: AlertCircle, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
-  low: { label: 'Coincidencia baja', icon: AlertTriangle, color: 'text-error', bg: 'bg-error/10', border: 'border-error/20' },
+  high: { labelKey: 'source.highMatch', icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
+  medium: { labelKey: 'source.mediumMatch', icon: AlertCircle, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+  low: { labelKey: 'source.lowMatch', icon: AlertTriangle, color: 'text-error', bg: 'bg-error/10', border: 'border-error/20' },
 }
 
 // In-memory cache to avoid re-fetching from IDB
 const sourceCache = new Map()
 
 export default function SourceTextViewer({ documentId, topicId, sections }) {
+  const { t } = useTranslation()
   const [state, setState] = useState({ status: 'idle', text: '', confidence: 'low' })
   const loadedRef = useRef(false)
 
@@ -75,7 +77,7 @@ export default function SourceTextViewer({ documentId, topicId, sections }) {
     return (
       <div className="flex items-center justify-center py-8 text-text-muted">
         <Loader2 className="w-4 h-4 animate-spin mr-2" />
-        <span className="text-sm">Cargando texto fuente...</span>
+        <span className="text-sm">{t('source.loading')}</span>
       </div>
     )
   }
@@ -84,7 +86,7 @@ export default function SourceTextViewer({ documentId, topicId, sections }) {
     return (
       <div className="text-center py-6">
         <p className="text-sm text-text-muted">
-          No se encontró texto fuente para esta sección en el PDF original.
+          {t('source.empty')}
         </p>
       </div>
     )
@@ -94,7 +96,7 @@ export default function SourceTextViewer({ documentId, topicId, sections }) {
     return (
       <div className="text-center py-6">
         <p className="text-sm text-error/70">
-          Error al cargar el texto fuente. Intentá recargar la página.
+          {t('source.error')}
         </p>
       </div>
     )
@@ -108,7 +110,7 @@ export default function SourceTextViewer({ documentId, topicId, sections }) {
       {/* Confidence badge */}
       <div className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${badge.color} ${badge.bg} border ${badge.border}`}>
         <BadgeIcon className="w-3 h-3" />
-        <span>{badge.label}</span>
+        <span>{t(badge.labelKey)}</span>
       </div>
 
       {/* Source text */}
@@ -119,7 +121,7 @@ export default function SourceTextViewer({ documentId, topicId, sections }) {
       </div>
 
       <p className="text-[11px] text-text-muted/60">
-        Texto extraído directamente del PDF. Puede contener artefactos de formato.
+        {t('source.disclaimer')}
       </p>
     </div>
   )

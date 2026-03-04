@@ -16,22 +16,26 @@ export const useStudyStore = create((set, get) => ({
 
   // Load persisted data for a document
   loadFromDB: async (documentId) => {
-    const structure = await db.getStructure(documentId)
-    const topics = await db.getTopics(documentId)
+    try {
+      const structure = await db.getStructure(documentId)
+      const topics = await db.getTopics(documentId)
 
-    if (structure) {
-      // Restore topic IDs from IDB composite keys
-      const cleanTopics = topics.map(({ id: idbId, documentId: _docId, ...rest }) => {
-        const sectionId = rest.sectionId || idbId.replace(`${documentId}_`, '')
-        return { ...rest, id: sectionId, sectionId }
-      })
-      // Even with 0 topics (interrupted after structure analysis), keep structure for resume
-      set({ structure, topics: cleanTopics, phase: 'ready', error: null })
-      return true // loaded from cache
+      if (structure) {
+        const cleanTopics = topics.map(({ id: idbId, documentId: _docId, ...rest }) => {
+          const sectionId = rest.sectionId || idbId.replace(`${documentId}_`, '')
+          return { ...rest, id: sectionId, sectionId }
+        })
+        set({ structure, topics: cleanTopics, phase: 'ready', error: null })
+        return true
+      }
+
+      set({ structure: null, topics: [], phase: 'idle' })
+      return false
+    } catch (err) {
+      console.error('[StudyMind] loadFromDB error:', err.message)
+      set({ structure: null, topics: [], phase: 'idle', error: err.message })
+      return false
     }
-
-    set({ structure: null, topics: [], phase: 'idle' })
-    return false // needs processing
   },
 
   // Save structure to IDB
@@ -53,6 +57,24 @@ export const useStudyStore = create((set, get) => ({
       }
       return { topics: [...state.topics, topic] }
     })
+  },
+
+  // Save a translation for a topic (cached for on-demand translation)
+  saveTopicTranslation: async (documentId, topicId, language, translatedData) => {
+    set(state => {
+      const updated = state.topics.map(t => {
+        if (t.id !== topicId) return t
+        const translations = { ...(t.translations || {}), [language]: translatedData }
+        return { ...t, translations }
+      })
+      return { topics: updated }
+    })
+
+    // Persist to DB — read current topic, add translation, save back
+    const currentTopic = get().topics.find(t => t.id === topicId)
+    if (currentTopic) {
+      await db.saveTopic(documentId, currentTopic)
+    }
   },
 
   // Regenerate a single topic (remove then re-add)

@@ -1,12 +1,14 @@
 import { Loader, CheckCircle, BookOpen, Brain, Sparkles, Square } from 'lucide-react'
+import { useTranslation } from '../lib/useTranslation'
 
 const PHASES = [
-  { key: 'parsing', label: 'Extrayendo texto del PDF', icon: BookOpen },
-  { key: 'analyzing', label: 'Detectando estructura del documento', icon: Brain },
-  { key: 'generating', label: 'Generando guías de estudio', icon: Sparkles },
+  { key: 'parsing', labelKey: 'processing.extracting', icon: BookOpen },
+  { key: 'analyzing', labelKey: 'processing.analyzing', icon: Brain },
+  { key: 'generating', labelKey: 'processing.generating', icon: Sparkles },
 ]
 
-export default function ProcessingStatus({ phase, progress, generatingTopic, onStop }) {
+export default function ProcessingStatus({ phase, progress, generatingTopic, onStop, pageRange }) {
+  const { t } = useTranslation()
   const currentIdx = PHASES.findIndex(p => p.key === phase)
   if (currentIdx === -1) return null
 
@@ -22,16 +24,23 @@ export default function ProcessingStatus({ phase, progress, generatingTopic, onS
           <div className="animate-spin-slow">
             <Loader className="w-6 h-6 text-accent" />
           </div>
-          <span className="text-lg font-semibold">
-            {PHASES[currentIdx].label}...
-          </span>
+          <div>
+            <span className="text-lg font-semibold">
+              {t(PHASES[currentIdx].labelKey)}...
+            </span>
+            {pageRange && (
+              <p className="text-xs text-text-muted mt-0.5">
+                {t('processing.pageRange', { start: pageRange.start, end: pageRange.end, total: pageRange.originalTotal })}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Progress bar (only for parsing and generating) */}
         {progress?.total > 0 && (
           <div className="mb-6">
             <div className="flex justify-between text-sm text-text-dim mb-2">
-              <span>{progress.current} de {progress.total}</span>
+              <span>{t('processing.nOfTotal', { current: progress.current, total: progress.total })}</span>
               <span>{pct}%</span>
             </div>
             <div className="w-full h-2.5 bg-surface-light rounded-full overflow-hidden">
@@ -53,7 +62,7 @@ export default function ProcessingStatus({ phase, progress, generatingTopic, onS
               </>
             ) : (
               <p className="text-text-dim animate-pulse-soft">
-                Procesando: <span className="text-text">{generatingTopic}</span>
+                {t('processing.topic')} <span className="text-text">{generatingTopic}</span>
               </p>
             )}
           </div>
@@ -67,7 +76,7 @@ export default function ProcessingStatus({ phase, progress, generatingTopic, onS
               border border-surface-light hover:border-error/30 hover:bg-error/5 transition-all mb-4"
           >
             <Square className="w-3 h-3" />
-            Detener procesamiento
+            {t('processing.stop')}
           </button>
         )}
 
@@ -94,7 +103,7 @@ export default function ProcessingStatus({ phase, progress, generatingTopic, onS
                 ) : (
                   <div className="w-5 h-5 rounded-full border-2 border-text-muted/30" />
                 )}
-                <span className={isCurrent ? 'font-medium' : ''}>{step.label}</span>
+                <span className={isCurrent ? 'font-medium' : ''}>{t(step.labelKey)}</span>
               </div>
             )
           })}

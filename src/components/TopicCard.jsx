@@ -1,19 +1,23 @@
-import { useState, useMemo } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText, Layers, BookMarked, PenLine } from 'lucide-react'
-import QuizSection from './QuizSection'
-import FreeTextQuizSection from './FreeTextQuizSection'
+import { useState, useMemo, useCallback } from 'react'
+import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText, Layers, BookMarked, Globe, Loader2 } from 'lucide-react'
+import { useTranslation } from '../lib/useTranslation'
+import HybridQuizSection from './HybridQuizSection'
 import ChatSection from './ChatSection'
 import ConnectionLink from './ConnectionLink'
 import SourceTextViewer from './SourceTextViewer'
 import NextTopicSuggestion from './NextTopicSuggestion'
 import { enrichConnections } from '../lib/connectionParser'
 import { useProgressStore } from '../stores/progressStore'
+import { useStudyStore } from '../stores/studyStore'
+import { useLLMStream } from '../hooks/useLLMStream'
+import { buildTranslationPrompt } from '../lib/promptBuilder'
 import { getMasteryLevel, MASTERY_LEVELS, DEPTH_LEVELS } from '../lib/proficiency'
+import { getContentLanguages, getLanguageName } from '../lib/languageDetector'
 
 const RELEVANCE = {
-  core: { label: 'Concepto Central', color: 'text-core', bg: 'bg-core-bg', border: 'border-core/30' },
-  supporting: { label: 'Concepto de Soporte', color: 'text-support', bg: 'bg-support-bg', border: 'border-support/30' },
-  detail: { label: 'Detalle', color: 'text-detail', bg: 'bg-detail-bg', border: 'border-detail/30' },
+  core: { labelKey: 'topic.coreConcept', color: 'text-core', bg: 'bg-core-bg', border: 'border-core/30' },
+  supporting: { labelKey: 'topic.supportConcept', color: 'text-support', bg: 'bg-support-bg', border: 'border-support/30' },
+  detail: { labelKey: 'topic.detail', color: 'text-detail', bg: 'bg-detail-bg', border: 'border-detail/30' },
 }
 
 function CollapsibleSection({ title, icon: Icon, expanded, onToggle, children }) {
@@ -130,13 +134,14 @@ function KeyConceptsRenderer({ concepts }) {
 
 // Render formal definitions box
 function DefinitionsBox({ definitions }) {
+  const { t } = useTranslation()
   if (!definitions?.length) return null
 
   return (
     <div className="bg-accent/5 border border-accent/15 rounded-xl p-4">
       <h4 className="text-xs font-semibold text-accent uppercase tracking-wider mb-3 flex items-center gap-1.5">
         <BookMarked className="w-3.5 h-3.5" />
-        Definiciones Formales
+        {t('topic.formalDefinitions')}
       </h4>
       <dl className="space-y-2.5">
         {definitions.map((def, i) => (
@@ -150,7 +155,8 @@ function DefinitionsBox({ definitions }) {
   )
 }
 
-export default function TopicCard({ topic, documentId, bookPage, provider, sections, topics, onNavigateToTopic, allBookTopics, onNavigateToDocument }) {
+export default function TopicCard({ topic, documentId, bookPage, provider, language, sections, topics, onNavigateToTopic, allBookTopics, onNavigateToDocument }) {
+  const { t } = useTranslation()
   const [expandedSections, setExpandedSections] = useState({
     sourceText: false,
     explanation: false,
@@ -162,11 +168,79 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
   const topicProgress = useProgressStore(s => s.progress[topic.id])
   const markStudied = useProgressStore(s => s.markStudied)
   const saveQuizScore = useProgressStore(s => s.saveQuizScore)
+  const saveTopicTranslation = useStudyStore(s => s.saveTopicTranslation)
+  const { streamRequest } = useLLMStream()
 
   const isStudied = topicProgress?.studied || false
   const rel = RELEVANCE[topic.relevance] || RELEVANCE.supporting
   const mastery = getMasteryLevel(topicProgress)
   const masteryInfo = MASTERY_LEVELS[mastery]
+
+  // View language toggle (for on-demand translation)
+  const [viewLanguage, setViewLanguage] = useState(language || 'es')
+  const [translating, setTranslating] = useState(false)
+  const [translateError, setTranslateError] = useState(null)
+
+  // Get content in the requested language (original or translated)
+  const getContent = useCallback(() => {
+    if (viewLanguage === language) return topic // original language
+    const cached = topic.translations?.[viewLanguage]
+    if (cached) return { ...topic, ...cached } // merge cached translation
+    return topic // fallback to original if no translation yet
+  }, [topic, viewLanguage, language])
+
+  const displayTopic = getContent()
+  const hasTranslation = viewLanguage === language || !!topic.translations?.[viewLanguage]
+
+  // Translate topic to another language on demand
+  const translateTopic = useCallback(async (targetLang) => {
+    if (targetLang === language) { setViewLanguage(targetLang); return }
+    if (topic.translations?.[targetLang]) { setViewLanguage(targetLang); return }
+
+    setTranslating(true)
+    setTranslateError(null)
+    setViewLanguage(targetLang)
+
+    try {
+      // Build content to translate
+      const contentToTranslate = {
+        summary: topic.summary,
+        keyConcepts: topic.keyConcepts,
+        ...(topic.deepExplanation && { deepExplanation: topic.deepExplanation }),
+        ...(topic.expandedExplanation && { expandedExplanation: topic.expandedExplanation }),
+        ...(topic.definitions?.length && { definitions: topic.definitions }),
+        ...(topic.connections?.length && { connections: topic.connections }),
+        ...(topic.quiz?.length && { quiz: topic.quiz }),
+      }
+
+      const prompt = buildTranslationPrompt(contentToTranslate, targetLang)
+      let fullText = ''
+      await streamRequest(prompt, {
+        provider: provider || 'claude',
+        model: 'claude-haiku-4-5-20251001',
+        promptVersion: 'translate',
+        maxTokens: 8192,
+        language: targetLang,
+        onToken: (text) => { fullText = text },
+        onDone: (text) => { fullText = text },
+        onError: (err) => { throw new Error(err) },
+      })
+
+      // Parse JSON from response
+      const cleaned = fullText.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '')
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error('Translation response invalid')
+
+      const translated = JSON.parse(jsonMatch[0])
+      await saveTopicTranslation(documentId, topic.id, targetLang, translated)
+    } catch (err) {
+      console.error('[StudyMind] Translation error:', err)
+      setTranslateError(err.message)
+      setViewLanguage(language) // revert to original
+    } finally {
+      setTranslating(false)
+    }
+  }, [topic, language, documentId, provider, streamRequest, saveTopicTranslation])
 
   // Depth level: stored in localStorage per topic
   const depthKey = `studymind-depth-${topic.id}`
@@ -177,17 +251,6 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
   const changeDepth = (level) => {
     setDepth(level)
     localStorage.setItem(depthKey, level)
-  }
-
-  // Quiz mode: self-assessment or free-text LLM evaluation
-  const quizModeKey = `studymind-quizmode-${topic.id}`
-  const [quizMode, setQuizMode] = useState(() => {
-    if (typeof localStorage === 'undefined') return 'self'
-    return localStorage.getItem(quizModeKey) || 'self'
-  })
-  const changeQuizMode = (mode) => {
-    setQuizMode(mode)
-    localStorage.setItem(quizModeKey, mode)
   }
 
   const showKeyConcepts = depth !== 'resumen'
@@ -211,11 +274,11 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${rel.color} ${rel.bg} border ${rel.border}`}>
-              {rel.label}
+              {t(rel.labelKey)}
             </span>
             {mastery !== 'sin-empezar' && (
               <span className={`text-xs ${masteryInfo.color} flex items-center gap-1`}>
-                <CheckCircle className="w-3 h-3" /> {masteryInfo.label}
+                <CheckCircle className="w-3 h-3" /> {t('mastery.' + mastery)}
               </span>
             )}
           </div>
@@ -233,7 +296,7 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
             onClick={() => markStudied(documentId, topic.id)}
             className="text-xs text-text-muted hover:text-success transition-colors px-3 py-1.5 rounded-lg hover:bg-success-bg border border-transparent hover:border-success/20"
           >
-            Marcar estudiado
+            {t('topic.markStudied')}
           </button>
         )}
       </div>
@@ -242,38 +305,76 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
       {topic.confidence === 'low' && (
         <div className="mb-4 flex items-center gap-2 text-xs text-amber-500/80 bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-2">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          <span>El texto de esta sección se extrajo por coincidencia aproximada. El contenido podría no ser completamente preciso.</span>
+          <span>{t('topic.lowConfidence')}</span>
         </div>
       )}
 
-      {/* Depth Level Selector */}
-      <div className="mb-4 flex items-center gap-1.5">
-        <Layers className="w-3.5 h-3.5 text-text-muted mr-1" />
-        {Object.entries(DEPTH_LEVELS).map(([key, level]) => (
-          <button
-            key={key}
-            onClick={() => changeDepth(key)}
-            className={`text-[11px] px-2.5 py-1 rounded-full transition-colors border ${
-              depth === key
-                ? 'bg-accent/15 text-accent border-accent/30 font-medium'
-                : 'text-text-muted hover:text-text-dim border-transparent hover:border-surface-light'
-            }`}
-            title={level.description}
-          >
-            {level.label}
-          </button>
-        ))}
+      {/* Depth Level Selector + Language Toggle */}
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Layers className="w-3.5 h-3.5 text-text-muted mr-1" />
+          {Object.entries(DEPTH_LEVELS).map(([key, level]) => (
+            <button
+              key={key}
+              onClick={() => changeDepth(key)}
+              className={`text-[11px] px-2.5 py-1 rounded-full transition-colors border ${
+                depth === key
+                  ? 'bg-accent/15 text-accent border-accent/30 font-medium'
+                  : 'text-text-muted hover:text-text-dim border-transparent hover:border-surface-light'
+              }`}
+              title={t('depth.' + key + '.desc')}
+            >
+              {t('depth.' + key)}
+            </button>
+          ))}
+        </div>
+
+        {/* Language toggle */}
+        <div className="flex items-center gap-1">
+          <Globe className="w-3.5 h-3.5 text-text-muted" />
+          {getContentLanguages().map(([code, name]) => (
+            <button
+              key={code}
+              onClick={() => translateTopic(code)}
+              disabled={translating}
+              className={`text-[11px] px-2 py-0.5 rounded-full transition-colors border ${
+                viewLanguage === code
+                  ? 'bg-accent/15 text-accent border-accent/30 font-medium'
+                  : 'text-text-muted hover:text-text-dim border-transparent hover:border-surface-light'
+              } disabled:opacity-50`}
+            >
+              {code.toUpperCase()}
+            </button>
+          ))}
+          {translating && <Loader2 className="w-3 h-3 text-accent animate-spin ml-1" />}
+        </div>
       </div>
+
+      {/* Translation error */}
+      {translateError && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-error bg-error/5 border border-error/10 rounded-lg px-3 py-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <span>{t('topic.translateError', { error: translateError })}</span>
+        </div>
+      )}
+
+      {/* Translation loading indicator */}
+      {translating && !hasTranslation && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-accent bg-accent/5 border border-accent/10 rounded-lg px-3 py-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          <span>{t('topic.translating', { lang: getLanguageName(viewLanguage) })}</span>
+        </div>
+      )}
 
       {/* Summary */}
       <div className="mb-4">
-        <p className="text-text leading-relaxed text-[15px]">{topic.summary}</p>
+        <p className="text-text leading-relaxed text-[15px]">{displayTopic.summary}</p>
       </div>
 
       {/* Source Text Viewer */}
       {sections?.length > 0 && (
         <CollapsibleSection
-          title="Texto Original del PDF"
+          title={t('topic.sourceText')}
           icon={FileText}
           expanded={expandedSections.sourceText}
           onToggle={() => toggle('sourceText')}
@@ -287,45 +388,45 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
       )}
 
       {/* Key Concepts (hidden in resumen mode) */}
-      {showKeyConcepts && topic.keyConcepts?.length > 0 && (
+      {showKeyConcepts && displayTopic.keyConcepts?.length > 0 && (
         <div className="mb-4">
           <h3 className="text-sm font-semibold text-text-dim mb-2 flex items-center gap-2">
             <Lightbulb className="w-4 h-4" />
-            Conceptos Clave
+            {t('topic.keyConcepts')}
           </h3>
-          <KeyConceptsRenderer concepts={topic.keyConcepts} />
+          <KeyConceptsRenderer concepts={displayTopic.keyConcepts} />
         </div>
       )}
 
       {/* Definitions (shown in intermedio and completo) */}
-      {showKeyConcepts && topic.definitions?.length > 0 && (
+      {showKeyConcepts && displayTopic.definitions?.length > 0 && (
         <div className="mb-4">
-          <DefinitionsBox definitions={topic.definitions} />
+          <DefinitionsBox definitions={displayTopic.definitions} />
         </div>
       )}
 
       {/* Deep Explanation (for multi-pass deep mode) */}
-      {topic.deepExplanation && depth !== 'resumen' && (
+      {displayTopic.deepExplanation && depth !== 'resumen' && (
         <CollapsibleSection
-          title={`Explicación Profunda${topic.chunkCount > 1 ? ` (${topic.chunkCount} fragmentos analizados)` : ''}`}
+          title={`${t('topic.deepExplanation')}${topic.chunkCount > 1 ? ` (${t('topic.chunksAnalyzed', { n: topic.chunkCount })})` : ''}`}
           icon={BookOpen}
           expanded={expandedSections.explanation}
           onToggle={() => toggle('explanation')}
         >
-          <DeepExplanationRenderer text={topic.deepExplanation} depth={depth} />
+          <DeepExplanationRenderer text={displayTopic.deepExplanation} depth={depth} />
         </CollapsibleSection>
       )}
 
       {/* Legacy Explanation (for standard mode / backward compat) */}
-      {!topic.deepExplanation && showExplanation && topic.expandedExplanation && (
+      {!displayTopic.deepExplanation && showExplanation && displayTopic.expandedExplanation && (
         <CollapsibleSection
-          title="Explicación Expandida"
+          title={t('topic.expandedExplanation')}
           icon={BookOpen}
           expanded={expandedSections.explanation}
           onToggle={() => toggle('explanation')}
         >
           <div className="text-text-dim leading-relaxed whitespace-pre-line text-sm">
-            {topic.expandedExplanation}
+            {displayTopic.expandedExplanation}
           </div>
         </CollapsibleSection>
       )}
@@ -333,7 +434,7 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
       {/* Expandable: Connections (hidden in resumen mode) */}
       {showConnections && enrichedConnections.length > 0 && (
         <CollapsibleSection
-          title="Conexiones con otros temas"
+          title={t('topic.connections')}
           icon={Link2}
           expanded={expandedSections.connections}
           onToggle={() => toggle('connections')}
@@ -352,55 +453,20 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
       )}
 
       {/* Expandable: Quiz */}
-      {topic.quiz?.length > 0 && (
+      {displayTopic.quiz?.length > 0 && (
         <CollapsibleSection
-          title={`Quiz (${topic.quiz.length} preguntas)`}
+          title={t('topic.quiz', { n: displayTopic.quiz.length })}
           icon={CheckCircle}
           expanded={expandedSections.quiz}
           onToggle={() => toggle('quiz')}
         >
-          {/* Quiz mode toggle */}
-          <div className="flex items-center gap-1 mb-4">
-            <button
-              onClick={() => changeQuizMode('self')}
-              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors border flex items-center gap-1.5 ${
-                quizMode === 'self'
-                  ? 'bg-accent/15 text-accent border-accent/30 font-medium'
-                  : 'text-text-muted hover:text-text-dim border-surface-light hover:border-surface-light'
-              }`}
-            >
-              <CheckCircle className="w-3 h-3" />
-              Autoevaluación
-            </button>
-            <button
-              onClick={() => changeQuizMode('freetext')}
-              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors border flex items-center gap-1.5 ${
-                quizMode === 'freetext'
-                  ? 'bg-accent/15 text-accent border-accent/30 font-medium'
-                  : 'text-text-muted hover:text-text-dim border-surface-light hover:border-surface-light'
-              }`}
-            >
-              <PenLine className="w-3 h-3" />
-              Texto libre
-            </button>
-            {quizMode === 'freetext' && (
-              <span className="text-[10px] text-text-muted ml-1">Usa API</span>
-            )}
-          </div>
-
-          {quizMode === 'self' ? (
-            <QuizSection
-              questions={topic.quiz}
-              onComplete={(score) => saveQuizScore(documentId, topic.id, score)}
-            />
-          ) : (
-            <FreeTextQuizSection
-              questions={topic.quiz}
-              topicContext={{ sectionTitle: topic.sectionTitle, summary: topic.summary }}
-              provider={provider}
-              onComplete={(score) => saveQuizScore(documentId, topic.id, score)}
-            />
-          )}
+          <HybridQuizSection
+            questions={displayTopic.quiz}
+            topicContext={{ sectionTitle: topic.sectionTitle, summary: displayTopic.summary }}
+            provider={provider}
+            language={language}
+            onComplete={(score) => saveQuizScore(documentId, topic.id, score)}
+          />
           <NextTopicSuggestion
             topics={topics}
             currentTopicId={topic.id}
@@ -411,7 +477,7 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
 
       {/* Expandable: Chat (Socratic Tutor) */}
       <CollapsibleSection
-        title="Tutor Socrático"
+        title={t('topic.socraticTutor')}
         icon={MessageCircle}
         expanded={expandedSections.chat}
         onToggle={() => toggle('chat')}
@@ -420,6 +486,7 @@ export default function TopicCard({ topic, documentId, bookPage, provider, secti
           topic={topic}
           documentId={documentId}
           provider={provider}
+          language={language}
         />
       </CollapsibleSection>
     </div>

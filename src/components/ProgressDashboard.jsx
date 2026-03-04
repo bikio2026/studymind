@@ -1,6 +1,7 @@
 import { BarChart3, Trophy, Target, TrendingUp } from 'lucide-react'
 import { useProgressStore } from '../stores/progressStore'
 import { getDocumentStats, MASTERY_LEVELS } from '../lib/proficiency'
+import { useTranslation } from '../lib/useTranslation'
 
 function MasteryBar({ label, count, total, color, bg }) {
   const pct = total > 0 ? (count / total) * 100 : 0
@@ -34,6 +35,7 @@ function StatCard({ icon: Icon, label, value, sublabel }) {
 }
 
 export default function ProgressDashboard({ topics }) {
+  const { t } = useTranslation()
   const progress = useProgressStore(s => s.progress)
   const stats = getDocumentStats(topics, progress)
 
@@ -61,36 +63,36 @@ export default function ProgressDashboard({ topics }) {
     <div className="mb-4 rounded-xl bg-surface-alt/50 border border-surface-light/30 p-4 animate-fadeIn">
       <div className="flex items-center gap-2 mb-4">
         <BarChart3 className="w-4 h-4 text-accent" />
-        <h3 className="text-sm font-semibold text-text">Progreso del documento</h3>
+        <h3 className="text-sm font-semibold text-text">{t('progress.title')}</h3>
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         <StatCard
           icon={Target}
-          label="Dominio"
+          label={t('progress.mastery')}
           value={`${completionPct}%`}
         />
         <StatCard
           icon={Trophy}
-          label="Proficiencia"
+          label={t('progress.proficiency')}
           value={stats.avgProficiency > 0 ? `${stats.avgProficiency}%` : '—'}
         />
         <StatCard
           icon={TrendingUp}
-          label="Quizzes"
+          label={t('progress.quizzes')}
           value={stats.quizzesTaken}
-          sublabel="intentos"
+          sublabel={t('progress.attempts')}
         />
       </div>
 
       {/* Mastery breakdown */}
       <div className="space-y-2">
-        <span className="text-[11px] text-text-muted font-medium">Nivel de dominio por tema</span>
+        <span className="text-[11px] text-text-muted font-medium">{t('progress.masteryByTopic')}</span>
         {masteryEntries.map(([key, level]) => (
           <MasteryBar
             key={key}
-            label={level.label}
+            label={t('mastery.' + key)}
             count={stats.byMastery[key]}
             total={stats.total}
             color={barColors[key]?.color || 'text-text-muted'}
@@ -109,7 +111,7 @@ export default function ProgressDashboard({ topics }) {
               key={key}
               className={`h-full ${barColors[key]?.bg || 'bg-text-muted/20'} transition-all duration-500`}
               style={{ width: `${pct}%` }}
-              title={`${MASTERY_LEVELS[key].label}: ${stats.byMastery[key]} temas`}
+              title={`${t('mastery.' + key)}: ${stats.byMastery[key]} ${t('progress.topics')}`}
             />
           )
         })}

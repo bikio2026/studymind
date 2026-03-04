@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react'
-import { Send, RotateCcw, Loader2, ChevronDown, ChevronUp, Check, AlertTriangle, X, RefreshCw } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Check, X, RotateCcw, Send, Loader2, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, Eye, PenLine } from 'lucide-react'
 import { useLLMStream } from '../hooks/useLLMStream'
 import { buildQuizEvaluationPrompt } from '../lib/promptBuilder'
 import { useTranslation } from '../lib/useTranslation'
@@ -31,27 +31,68 @@ function ScoreBar({ score }) {
   )
 }
 
-export default function FreeTextQuizSection({ questions, topicContext, provider, language, onComplete }) {
+export default function HybridQuizSection({ questions, topicContext, provider, language, onComplete }) {
   const { t } = useTranslation()
-  const [answers, setAnswers] = useState({})
-  const [evaluations, setEvaluations] = useState({})
+
+  // Per-question state: { mode: 'pending'|'self'|'freetext', revealed, selfAnswer, textAnswer, evaluation, score }
+  const [questionStates, setQuestionStates] = useState({})
   const [evaluatingIdx, setEvaluatingIdx] = useState(null)
   const [error, setError] = useState(null)
   const [showModelAnswer, setShowModelAnswer] = useState({})
-  const [submitted, setSubmitted] = useState(false)
   const { streamRequest, cancel } = useLLMStream()
   const cancelledRef = useRef(false)
+  const completedRef = useRef(false)
 
-  const evaluatedCount = Object.keys(evaluations).length
-  const allEvaluated = evaluatedCount === questions.length
+  const getState = (idx) => questionStates[idx] || { mode: 'pending' }
 
-  const handleTextChange = (idx, text) => {
-    setAnswers(prev => ({ ...prev, [idx]: text }))
+  const completedCount = Object.values(questionStates).filter(s => s.score !== undefined).length
+  const allCompleted = completedCount === questions.length
+
+  const checkAllCompleted = (states) => {
+    const done = Object.values(states).filter(s => s.score !== undefined).length
+    if (done === questions.length && !completedRef.current) {
+      completedRef.current = true
+      const avgScore = Math.round(
+        Object.values(states).reduce((sum, s) => sum + (s.score || 0), 0) / questions.length
+      )
+      onComplete?.(avgScore)
+    }
   }
 
-  const evaluateAnswer = useCallback(async (idx) => {
+  // Choose mode for a question
+  const chooseMode = (idx, mode) => {
+    setQuestionStates(prev => ({ ...prev, [idx]: { ...(prev[idx] || {}), mode } }))
+  }
+
+  // --- Self-assessment ---
+  const revealAndChooseSelf = (idx) => {
+    setQuestionStates(prev => ({
+      ...prev,
+      [idx]: { ...(prev[idx] || {}), mode: 'self', revealed: true },
+    }))
+  }
+
+  const markSelfAnswer = (idx, correct) => {
+    const score = correct ? 100 : 0
+    setQuestionStates(prev => {
+      const updated = { ...prev, [idx]: { ...prev[idx], selfAnswer: correct, score } }
+      checkAllCompleted(updated)
+      return updated
+    })
+  }
+
+  // --- Free text ---
+  const handleTextChange = (idx, text) => {
+    setQuestionStates(prev => ({
+      ...prev,
+      [idx]: { ...(prev[idx] || {}), textAnswer: text },
+    }))
+  }
+
+  const evaluateAnswer = async (idx) => {
     const q = questions[idx]
-    const userAnswer = answers[idx]?.trim()
+    const state = questionStates[idx]
+    const userAnswer = state?.textAnswer?.trim()
     if (!userAnswer || userAnswer.length < 10) return
 
     setEvaluatingIdx(idx)
@@ -82,7 +123,6 @@ export default function FreeTextQuizSection({ questions, topicContext, provider,
 
       if (cancelledRef.current) return
 
-      // Parse JSON from LLM response
       const jsonMatch = fullText.match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error(t('freeQuiz.invalidResponse'))
 
@@ -92,24 +132,11 @@ export default function FreeTextQuizSection({ questions, topicContext, provider,
         ? result.classification
         : score >= 80 ? 'correct' : score >= 40 ? 'partial' : 'incorrect'
 
-      const evaluation = {
-        score,
-        classification,
-        feedback: result.feedback || '',
-      }
+      const evaluation = { score, classification, feedback: result.feedback || '' }
 
-      setEvaluations(prev => {
-        const updated = { ...prev, [idx]: evaluation }
-
-        // Check if all done → submit
-        if (Object.keys(updated).length === questions.length && !submitted) {
-          setSubmitted(true)
-          const avgScore = Math.round(
-            Object.values(updated).reduce((sum, e) => sum + e.score, 0) / questions.length
-          )
-          onComplete?.(avgScore)
-        }
-
+      setQuestionStates(prev => {
+        const updated = { ...prev, [idx]: { ...prev[idx], evaluation, score } }
+        checkAllCompleted(updated)
         return updated
       })
     } catch (err) {
@@ -119,29 +146,32 @@ export default function FreeTextQuizSection({ questions, topicContext, provider,
     } finally {
       setEvaluatingIdx(null)
     }
-  }, [questions, answers, topicContext, provider, language, streamRequest, submitted, onComplete])
+  }
 
   const reset = () => {
     cancelledRef.current = true
+    completedRef.current = false
     cancel()
-    setAnswers({})
-    setEvaluations({})
+    setQuestionStates({})
     setEvaluatingIdx(null)
     setError(null)
     setShowModelAnswer({})
-    setSubmitted(false)
   }
 
   const toggleModelAnswer = (idx) => {
     setShowModelAnswer(prev => ({ ...prev, [idx]: !prev[idx] }))
   }
 
+  const avgScore = allCompleted
+    ? Math.round(Object.values(questionStates).reduce((sum, s) => sum + (s.score || 0), 0) / questions.length)
+    : 0
+
   return (
     <div className="space-y-4">
       {questions.map((q, idx) => {
-        const evaluation = evaluations[idx]
+        const state = getState(idx)
         const isEvaluating = evaluatingIdx === idx
-        const hasAnswer = (answers[idx]?.trim()?.length || 0) >= 10
+        const hasTextAnswer = (state.textAnswer?.trim()?.length || 0) >= 10
 
         return (
           <div key={idx} className="bg-surface/50 rounded-lg p-4">
@@ -151,11 +181,63 @@ export default function FreeTextQuizSection({ questions, topicContext, provider,
               {q.question}
             </p>
 
-            {/* Answer input or evaluation result */}
-            {!evaluation ? (
-              <div className="space-y-2">
+            {/* Mode selection (pending) */}
+            {state.mode === 'pending' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => chooseMode(idx, 'freetext')}
+                  className="text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors text-text-muted hover:text-accent hover:bg-accent/10 border border-surface-light hover:border-accent/30"
+                >
+                  <PenLine className="w-3.5 h-3.5" />
+                  {t('hybrid.writeAnswer')}
+                </button>
+                <button
+                  onClick={() => revealAndChooseSelf(idx)}
+                  className="text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors text-text-muted hover:text-blue-400 hover:bg-blue-400/10 border border-surface-light hover:border-blue-400/30"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  {t('hybrid.revealAnswer')}
+                </button>
+              </div>
+            )}
+
+            {/* Self-assessment mode */}
+            {state.mode === 'self' && (
+              <div className="animate-fadeIn">
+                <p className="text-sm text-text-dim mb-3 pl-3 border-l-2 border-accent/30">
+                  {q.answer}
+                </p>
+
+                {state.score === undefined && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => markSelfAnswer(idx, true)}
+                      className="text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors text-text-muted hover:text-success hover:bg-success/10 border border-surface-light hover:border-success/30"
+                    >
+                      <Check className="w-3 h-3" /> {t('quiz.knew')}
+                    </button>
+                    <button
+                      onClick={() => markSelfAnswer(idx, false)}
+                      className="text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors text-text-muted hover:text-error hover:bg-error/10 border border-surface-light hover:border-error/30"
+                    >
+                      <X className="w-3 h-3" /> {t('quiz.didntKnow')}
+                    </button>
+                  </div>
+                )}
+
+                {state.score !== undefined && (
+                  <span className={`text-xs ${state.selfAnswer ? 'text-success' : 'text-error'}`}>
+                    {state.selfAnswer ? t('quiz.correct') : t('quiz.toReview')}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Free text mode — input */}
+            {state.mode === 'freetext' && !state.evaluation && (
+              <div className="space-y-2 animate-fadeIn">
                 <textarea
-                  value={answers[idx] || ''}
+                  value={state.textAnswer || ''}
                   onChange={(e) => handleTextChange(idx, e.target.value)}
                   placeholder={t('freeQuiz.placeholder')}
                   disabled={isEvaluating}
@@ -164,25 +246,21 @@ export default function FreeTextQuizSection({ questions, topicContext, provider,
                 />
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-text-muted">
-                    {(answers[idx]?.trim()?.length || 0)} {t('freeQuiz.charCount')}
+                    {(state.textAnswer?.trim()?.length || 0)} {t('freeQuiz.charCount')}
                   </span>
                   <button
                     onClick={() => evaluateAnswer(idx)}
-                    disabled={!hasAnswer || isEvaluating}
+                    disabled={!hasTextAnswer || isEvaluating}
                     className="text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors bg-accent/10 text-accent hover:bg-accent/20 border border-accent/30 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isEvaluating ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" /> {t('freeQuiz.evaluating')}
-                      </>
+                      <><Loader2 className="w-3 h-3 animate-spin" /> {t('freeQuiz.evaluating')}</>
                     ) : (
-                      <>
-                        <Send className="w-3 h-3" /> {t('freeQuiz.evaluate')}
-                      </>
+                      <><Send className="w-3 h-3" /> {t('freeQuiz.evaluate')}</>
                     )}
                   </button>
                 </div>
-                {error && evaluatingIdx === null && idx === Math.max(...Object.keys(answers).map(Number).filter(k => !evaluations[k]), 0) && (
+                {error && evaluatingIdx === null && (
                   <div className="flex items-center gap-2 text-xs text-error bg-error/5 border border-error/10 rounded-lg px-3 py-2">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                     <span>{error}</span>
@@ -192,27 +270,25 @@ export default function FreeTextQuizSection({ questions, topicContext, provider,
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="space-y-3 animate-fadeIn">
-                {/* User's answer (dimmed) */}
-                <p className="text-sm text-text-muted bg-surface-light/30 rounded-lg px-3 py-2 italic">
-                  {answers[idx]}
-                </p>
+            )}
 
-                {/* Score + feedback */}
+            {/* Free text mode — evaluation result */}
+            {state.mode === 'freetext' && state.evaluation && (
+              <div className="space-y-3 animate-fadeIn">
+                <p className="text-sm text-text-muted bg-surface-light/30 rounded-lg px-3 py-2 italic">
+                  {state.textAnswer}
+                </p>
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
-                    <ScoreBadge score={evaluation.score} classification={evaluation.classification} />
-                    <ScoreBar score={evaluation.score} />
+                    <ScoreBadge score={state.evaluation.score} classification={state.evaluation.classification} />
+                    <ScoreBar score={state.evaluation.score} />
                   </div>
-                  {evaluation.feedback && (
+                  {state.evaluation.feedback && (
                     <p className="text-sm text-text-dim leading-relaxed pl-3 border-l-2 border-accent/30 italic">
-                      {evaluation.feedback}
+                      {state.evaluation.feedback}
                     </p>
                   )}
                 </div>
-
-                {/* Model answer toggle */}
                 <button
                   onClick={() => toggleModelAnswer(idx)}
                   className="text-xs text-accent hover:text-accent/80 transition-colors flex items-center gap-1"
@@ -231,26 +307,26 @@ export default function FreeTextQuizSection({ questions, topicContext, provider,
         )
       })}
 
-      {/* Progress indicator */}
-      {evaluatedCount > 0 && !allEvaluated && (
+      {/* Progress */}
+      {completedCount > 0 && !allCompleted && (
         <div className="text-xs text-text-muted text-center">
-          {t('freeQuiz.evaluated', { n: evaluatedCount, total: questions.length })}
+          {t('freeQuiz.evaluated', { n: completedCount, total: questions.length })}
         </div>
       )}
 
       {/* Final result */}
-      {allEvaluated && (
+      {allCompleted && (
         <div className="flex items-center justify-between p-4 bg-surface rounded-lg animate-fadeIn border border-surface-light">
           <div className="space-y-1">
             <div>
               <span className="text-sm font-semibold">
-                {t('freeQuiz.result', { score: Math.round(Object.values(evaluations).reduce((s, e) => s + e.score, 0) / questions.length) })}
+                {t('freeQuiz.result', { score: avgScore })}
               </span>
               <span className="text-xs text-text-muted ml-2">
                 {t('freeQuiz.average', { n: questions.length })}
               </span>
             </div>
-            <ScoreBar score={Math.round(Object.values(evaluations).reduce((s, e) => s + e.score, 0) / questions.length)} />
+            <ScoreBar score={avgScore} />
           </div>
           <button
             onClick={reset}

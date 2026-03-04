@@ -2,8 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import { Palette } from 'lucide-react'
 import { useThemeStore } from '../stores/themeStore'
 import { THEMES, THEME_IDS } from '../lib/themes'
+import { useTranslation } from '../lib/useTranslation'
 
 export default function ThemeSelector() {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const currentTheme = useThemeStore(s => s.theme)
   const setTheme = useThemeStore(s => s.setTheme)
@@ -29,7 +31,7 @@ export default function ThemeSelector() {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text px-2.5 py-1.5 rounded-lg
           hover:bg-surface-alt transition-colors border border-transparent hover:border-surface-light"
-        title="Cambiar tema visual"
+        title={t('theme.changeTheme')}
       >
         <Palette className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">{current.name}</span>
@@ -41,7 +43,7 @@ export default function ThemeSelector() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 z-50 bg-surface-alt border border-surface-light rounded-xl shadow-xl py-1.5 w-56 animate-fadeIn">
+        <div className="absolute right-0 top-full mt-1.5 z-50 bg-surface-alt border border-surface-light rounded-xl shadow-xl py-1.5 w-56 max-h-[70vh] overflow-y-auto animate-fadeIn">
           {THEME_IDS.map(id => {
             const theme = THEMES[id]
             const isActive = id === currentTheme

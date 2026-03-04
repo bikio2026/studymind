@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react'
 import { Upload, AlertCircle } from 'lucide-react'
+import { useTranslation } from '../lib/useTranslation'
 
 export default function PDFUploader({ onFileSelect, disabled }) {
+  const { t } = useTranslation()
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState(null)
   const inputRef = useRef(null)
@@ -9,11 +11,11 @@ export default function PDFUploader({ onFileSelect, disabled }) {
   const handleFile = (file) => {
     if (!file) return
     if (file.type !== 'application/pdf') {
-      setError('Solo se aceptan archivos PDF')
+      setError(t('upload.pdfOnly'))
       return
     }
     if (file.size > 100 * 1024 * 1024) {
-      setError('El archivo es demasiado grande (máx 100 MB)')
+      setError(t('upload.tooLarge'))
       return
     }
     setError(null)
@@ -54,12 +56,12 @@ export default function PDFUploader({ onFileSelect, disabled }) {
         `}
       >
         <Upload className="w-14 h-14 mx-auto mb-5 text-accent" />
-        <h2 className="text-2xl font-bold mb-2">Subí tu PDF</h2>
+        <h2 className="text-2xl font-bold mb-2">{t('upload.titleSmall')}</h2>
         <p className="text-text-dim text-sm mb-1">
-          Arrastrá el archivo acá o hacé click para seleccionarlo
+          {t('upload.instructions')}
         </p>
         <p className="text-text-muted text-xs">
-          Libros de texto, apuntes, papers &mdash; cualquier PDF con texto
+          {t('upload.subtext')}
         </p>
         <input
           ref={inputRef}
@@ -78,19 +80,19 @@ export default function PDFUploader({ onFileSelect, disabled }) {
       )}
 
       <div className="mt-12 max-w-md text-center">
-        <h3 className="text-sm font-semibold text-text-dim mb-3">Cómo funciona</h3>
+        <h3 className="text-sm font-semibold text-text-dim mb-3">{t('upload.howItWorks')}</h3>
         <div className="grid grid-cols-3 gap-6 text-xs text-text-muted">
           <div>
             <div className="text-2xl mb-1">1</div>
-            <p>Subís un PDF y se extrae todo el texto</p>
+            <p>{t('upload.step1')}</p>
           </div>
           <div>
             <div className="text-2xl mb-1">2</div>
-            <p>La IA detecta la estructura y los temas</p>
+            <p>{t('upload.step2')}</p>
           </div>
           <div>
             <div className="text-2xl mb-1">3</div>
-            <p>Se genera una guía interactiva por tema</p>
+            <p>{t('upload.step3')}</p>
           </div>
         </div>
       </div>

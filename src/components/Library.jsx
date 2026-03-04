@@ -1,22 +1,23 @@
 import { useState, useRef } from 'react'
 import { useDocumentStore } from '../stores/documentStore'
 import { getModelName } from '../lib/models'
+import { useTranslation } from '../lib/useTranslation'
 import {
   FileText, Upload, Trash2, Clock, BookOpen,
   ChevronRight, AlertCircle, Loader2, Files, Cpu, Pencil
 } from 'lucide-react'
 
-function formatDate(ts) {
+function formatDate(ts, t, locale = 'es-AR') {
   if (!ts) return '—'
   const d = new Date(ts)
   const now = new Date()
   const diff = now - d
 
-  if (diff < 60_000) return 'Hace un momento'
-  if (diff < 3_600_000) return `Hace ${Math.floor(diff / 60_000)} min`
-  if (diff < 86_400_000) return `Hace ${Math.floor(diff / 3_600_000)}h`
+  if (diff < 60_000) return t('time.justNow')
+  if (diff < 3_600_000) return t('time.minutesAgo', { n: Math.floor(diff / 60_000) })
+  if (diff < 86_400_000) return t('time.hoursAgo', { n: Math.floor(diff / 3_600_000) })
 
-  return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+  return d.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
 }
 
 function formatSize(bytes) {
@@ -27,6 +28,7 @@ function formatSize(bytes) {
 }
 
 function DocumentCard({ doc, onOpen, onDelete, onRename }) {
+  const { t, language } = useTranslation()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
@@ -74,22 +76,22 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
             {doc.bookId && (
               <span className="text-[10px] font-medium text-accent bg-accent/10 px-2 py-0.5 rounded-full flex items-center gap-1">
                 <BookOpen className="w-2.5 h-2.5" />
-                Libro
+                {t('library.book')}
               </span>
             )}
             {isReady ? (
               <span className="text-[10px] font-medium text-success bg-success/10 px-2 py-0.5 rounded-full">
-                Listo
+                {t('library.ready')}
               </span>
             ) : isIncomplete ? (
               <span className="text-[10px] font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
                 <AlertCircle className="w-2.5 h-2.5" />
-                Incompleto
+                {t('library.incomplete')}
               </span>
             ) : (
               <span className="text-[10px] font-medium text-warning bg-warning/10 px-2 py-0.5 rounded-full flex items-center gap-1">
                 <Loader2 className="w-2.5 h-2.5 animate-spin-slow" />
-                Procesando
+                {t('library.processing')}
               </span>
             )}
           </div>
@@ -129,13 +131,15 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
           {doc.totalPages && (
             <span className="flex items-center gap-1">
               <Files className="w-3 h-3" />
-              {doc.totalPages} pág.{doc.originalTotalPages ? ` / ${doc.originalTotalPages}` : ''}
+              {doc.pageRange
+                ? `p. ${doc.pageRange.start}–${doc.pageRange.end} / ${doc.pageRange.originalTotal}`
+                : `${doc.totalPages} ${t('common.pages')}`}
             </span>
           )}
           <span>{formatSize(doc.fileSize)}</span>
           <span className="flex items-center gap-1 ml-auto">
             <Clock className="w-3 h-3" />
-            {formatDate(doc.processedAt)}
+            {formatDate(doc.processedAt, t, language === 'en' ? 'en-US' : 'es-AR')}
           </span>
         </div>
       </div>
@@ -160,7 +164,7 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
             }`}
           >
             <Trash2 className="w-3 h-3" />
-            {confirmDelete ? 'Confirmar' : 'Eliminar'}
+            {confirmDelete ? t('common.confirm') : t('common.delete')}
           </button>
 
           <button
@@ -168,12 +172,12 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
             className="text-[11px] flex items-center gap-1 px-2 py-1 rounded text-text-muted hover:text-accent transition-colors"
           >
             <Pencil className="w-3 h-3" />
-            Renombrar
+            {t('common.rename')}
           </button>
         </div>
 
         <span className="text-[11px] text-accent flex items-center gap-1">
-          Abrir <ChevronRight className="w-3 h-3" />
+          {t('common.open')} <ChevronRight className="w-3 h-3" />
         </span>
       </div>
     </div>
@@ -181,6 +185,7 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
 }
 
 export default function Library({ onNewDocument }) {
+  const { t } = useTranslation()
   const documents = useDocumentStore(s => s.documents)
   const loading = useDocumentStore(s => s.loading)
   const setActiveDocument = useDocumentStore(s => s.setActiveDocument)
@@ -194,11 +199,11 @@ export default function Library({ onNewDocument }) {
   const handleFile = (file) => {
     if (!file) return
     if (file.type !== 'application/pdf') {
-      setUploadError('Solo se aceptan archivos PDF')
+      setUploadError(t('upload.pdfOnly'))
       return
     }
     if (file.size > 100 * 1024 * 1024) {
-      setUploadError('El archivo es demasiado grande (máx 100 MB)')
+      setUploadError(t('upload.tooLarge'))
       return
     }
     setUploadError(null)
@@ -239,12 +244,12 @@ export default function Library({ onNewDocument }) {
           `}
         >
           <Upload className="w-14 h-14 mx-auto mb-5 text-accent" />
-          <h2 className="text-2xl font-bold mb-2">Subí tu primer PDF</h2>
+          <h2 className="text-2xl font-bold mb-2">{t('upload.title')}</h2>
           <p className="text-text-dim text-sm mb-1">
-            Arrastrá el archivo acá o hacé click para seleccionarlo
+            {t('upload.instructions')}
           </p>
           <p className="text-text-muted text-xs">
-            Libros de texto, apuntes, papers &mdash; cualquier PDF con texto
+            {t('upload.subtext')}
           </p>
           <input
             ref={fileInputRef}
@@ -263,19 +268,19 @@ export default function Library({ onNewDocument }) {
         )}
 
         <div className="mt-12 max-w-md text-center">
-          <h3 className="text-sm font-semibold text-text-dim mb-3">Cómo funciona</h3>
+          <h3 className="text-sm font-semibold text-text-dim mb-3">{t('upload.howItWorks')}</h3>
           <div className="grid grid-cols-3 gap-6 text-xs text-text-muted">
             <div>
               <div className="text-2xl mb-1">1</div>
-              <p>Subís un PDF y se extrae todo el texto</p>
+              <p>{t('upload.step1')}</p>
             </div>
             <div>
               <div className="text-2xl mb-1">2</div>
-              <p>La IA detecta la estructura y los temas</p>
+              <p>{t('upload.step2')}</p>
             </div>
             <div>
               <div className="text-2xl mb-1">3</div>
-              <p>Se genera una guía interactiva por tema</p>
+              <p>{t('upload.step3')}</p>
             </div>
           </div>
         </div>
@@ -291,9 +296,9 @@ export default function Library({ onNewDocument }) {
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-text-muted" />
           <h2 className="text-sm font-semibold text-text-dim">
-            Tu biblioteca
+            {t('library.title')}
             <span className="text-text-muted font-normal ml-2">
-              {documents.length} {documents.length === 1 ? 'documento' : 'documentos'}
+              {documents.length} {documents.length === 1 ? t('library.document') : t('library.documents')}
             </span>
           </h2>
         </div>
@@ -303,7 +308,7 @@ export default function Library({ onNewDocument }) {
           className="text-xs text-accent hover:text-accent/80 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent/20 hover:border-accent/40 hover:bg-accent-glow transition-all"
         >
           <Upload className="w-3.5 h-3.5" />
-          Nuevo PDF
+          {t('library.newPdf')}
         </button>
         <input
           ref={fileInputRef}
@@ -338,7 +343,7 @@ export default function Library({ onNewDocument }) {
           `}
         >
           <Upload className="w-8 h-8 text-text-muted mb-2" />
-          <span className="text-xs text-text-muted">Subir PDF</span>
+          <span className="text-xs text-text-muted">{t('library.uploadPdf')}</span>
         </div>
 
         {/* Document cards */}

@@ -20,20 +20,41 @@ export function extractFirstPages(pages, maxPages = 5) {
 // --- TOC Detection Engine ---
 
 const TOC_KEYWORDS = [
+  // Spanish
   'índice general', 'indice general', 'índice analítico', 'indice analitico',
   'índice temático', 'indice tematico', 'índice de contenidos', 'indice de contenidos',
-  'tabla de contenidos', 'table of contents', 'contents',
-  'índice', 'indice', 'contenido', 'sumario',
+  'tabla de contenidos', 'índice', 'indice', 'contenido', 'sumario',
+  // English
+  'table of contents', 'contents', 'detailed contents', 'brief contents',
+  // Portuguese
+  'sumário', 'sumario', 'índice geral',
+  // French
+  'table des matières', 'table des matieres', 'sommaire',
+  // German
+  'inhaltsverzeichnis', 'inhalt',
+  // Italian
+  'indice dei contenuti', 'sommario',
 ]
 
 const ANALYTICAL_KEYWORDS = [
   'índice analítico', 'indice analitico', 'índice temático', 'indice tematico',
-  'índice de materias', 'indice de materias', 'analytical index',
+  'índice de materias', 'indice de materias',
+  'analytical index', 'subject index', 'keyword index', 'index',
 ]
 
 const GENERAL_KEYWORDS = [
-  'índice general', 'indice general', 'tabla de contenidos', 'table of contents',
-  'contenido', 'contents', 'sumario',
+  // Spanish
+  'índice general', 'indice general', 'tabla de contenidos', 'contenido', 'sumario',
+  // English
+  'table of contents', 'contents', 'detailed contents', 'brief contents',
+  // Portuguese
+  'sumário', 'sumario',
+  // French
+  'table des matières', 'table des matieres', 'sommaire',
+  // German
+  'inhaltsverzeichnis', 'inhalt',
+  // Italian
+  'indice dei contenuti',
 ]
 
 // Normalize text for keyword matching — handles OCR artifacts
@@ -166,6 +187,22 @@ export function extractTOCTextFromRegions(tocResult, maxChars = 12000) {
   return result.slice(0, maxChars)
 }
 
+// --- Stable section IDs ---
+
+/**
+ * Generate a deterministic ID for a section based on its content.
+ * Same section in different imports produces the same ID.
+ */
+export function generateStableSectionId(title, level, pageStart) {
+  const slug = (title || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50)
+  return `sec-${slug}-L${level || 2}-p${pageStart || 0}`
+}
+
 // --- TOC Parser: extract structured entries from TOC text ---
 
 /**
@@ -197,17 +234,18 @@ export function parseTOCEntries(tocText) {
 
     const normTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
-    // Part detection
-    if (/^(parte|part)\s+[ivxlcdm\d]+/i.test(title) || /^(PARTE|PART)\s/.test(title)) {
+    // Part detection (ES: Parte, EN: Part, FR: Partie, DE: Teil, PT: Parte, IT: Parte)
+    if (/^(parte|part|partie|teil)\s+[ivxlcdm\d]+/i.test(title) || /^(PARTE|PART|PARTIE|TEIL)\s/.test(title)) {
       level = 1
       type = 'part'
     }
-    // Chapter detection (explicit)
-    else if (/^(capitulo|cap\.?|chapter|ch\.?)\s+\d+/i.test(normTitle)) {
+    // Chapter detection (ES: capítulo, EN: chapter, FR: chapitre, DE: kapitel, PT: capítulo, IT: capitolo)
+    // Also: unit, module, section, lesson, topic, appendix
+    else if (/^(capitulo|cap\.?|chapter|ch\.?|chapitre|kapitel|capitolo|unit|module|lesson|topic|unidad|modulo|leccion|tema|appendix|apendice|anexo)\s+\d+/i.test(normTitle)) {
       level = 2
       type = 'chapter'
     }
-    // Numbered chapter (just number + title, like "3. Teoría del ingreso")
+    // Numbered chapter (just number + title, like "3. Teoría del ingreso" or "3 Introduction")
     else if (/^\d{1,2}[\.\)]\s/.test(title) && !/^\d{1,2}\.\d/.test(title)) {
       level = 2
       type = 'chapter'
@@ -309,16 +347,18 @@ export function tocEntriesToStructure(entries, pageOffset = 0) {
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]
-    const id = i + 1
+
+    // Calculate PDF page from book page + offset
+    const pdfPage = entry.pageNumber + pageOffset
+
+    // Stable ID: deterministic, based on title+level+page — same section across imports produces same ID
+    const id = generateStableSectionId(entry.title, entry.level, pdfPage)
 
     // Find parent: closest ancestor in stack with lower level
     while (parentStack.length > 0 && parentStack[parentStack.length - 1].level >= entry.level) {
       parentStack.pop()
     }
     const parentId = parentStack.length > 0 ? parentStack[parentStack.length - 1].id : null
-
-    // Calculate PDF page from book page + offset
-    const pdfPage = entry.pageNumber + pageOffset
 
     sections.push({
       id,
@@ -351,13 +391,13 @@ export function getSampledText(pages, maxTokens = 8000, tocText = null) {
     const tocBudget = Math.floor(maxChars * 0.4)
     const sampleBudget = maxChars - tocBudget
 
-    let result = `=== ÍNDICE DEL DOCUMENTO ===\n${tocText.slice(0, tocBudget)}\n=== FIN DEL ÍNDICE ===\n\n`
+    let result = `=== TABLE OF CONTENTS / ÍNDICE ===\n${tocText.slice(0, tocBudget)}\n=== END / FIN ===\n\n`
 
     // Sample pages from the filtered range (all pages, not just after page 5)
     const step = Math.max(1, Math.floor(pages.length / 20))
     for (let i = 0; i < pages.length; i += step) {
       if (result.length >= tocBudget + sampleBudget) break
-      result += `\n\n--- Página ${pages[i].pageNumber} ---\n${pages[i].text.slice(0, 500)}`
+      result += `\n\n--- Page/Página ${pages[i].pageNumber} ---\n${pages[i].text.slice(0, 800)}`
     }
 
     return result.slice(0, maxChars)
@@ -375,7 +415,7 @@ export function getSampledText(pages, maxTokens = 8000, tocText = null) {
 
   for (let i = 5; i < pages.length; i += step) {
     if (result.length >= maxChars) break
-    result += `\n\n--- Página ${pages[i].pageNumber} ---\n${pages[i].text.slice(0, 500)}`
+    result += `\n\n--- Page/Página ${pages[i].pageNumber} ---\n${pages[i].text.slice(0, 800)}`
   }
 
   return result.slice(0, maxChars)

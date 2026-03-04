@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useLLMStream } from './useLLMStream'
 import { buildStructurePrompt } from '../lib/promptBuilder'
-import { getSampledText, parseTOCEntries, detectPageOffset, tocEntriesToStructure } from '../lib/textUtils'
+import { getSampledText, parseTOCEntries, detectPageOffset, tocEntriesToStructure, generateStableSectionId } from '../lib/textUtils'
 
 export function useDocumentAnalysis() {
   const [structure, setStructure] = useState(null)
@@ -9,7 +9,7 @@ export function useDocumentAnalysis() {
   const [error, setError] = useState(null)
   const { streamRequest } = useLLMStream()
 
-  const analyzeStructure = useCallback(async (document, { provider, model }) => {
+  const analyzeStructure = useCallback(async (document, { provider, model, language }) => {
     setAnalyzing(true)
     setError(null)
 
@@ -68,6 +68,7 @@ export function useDocumentAnalysis() {
         model,
         promptVersion: 'structure',
         maxTokens: 4096,
+        language,
         onToken: (text) => { fullText = text },
         onDone: (text) => { fullText = text },
         onError: (err) => { throw new Error(err) },
@@ -92,13 +93,7 @@ export function useDocumentAnalysis() {
         throw new Error('La respuesta del modelo no es JSON válido. Intentá de nuevo.')
       }
 
-      // Ensure sections have sequential ids
       if (parsed.sections) {
-        parsed.sections = parsed.sections.map((s, i) => ({
-          ...s,
-          id: s.id || i + 1,
-        }))
-
         // Compute pageStart from bookPage + offset (LLM only returns bookPage)
         if (parsed.sections.some(s => s.bookPage) && document.pages?.length) {
           const fakeEntries = parsed.sections
@@ -113,8 +108,27 @@ export function useDocumentAnalysis() {
           }))
         }
 
+        // Assign stable IDs (deterministic, based on title+level+page)
+        // Same section across different imports produces the same ID
+        parsed.sections = parsed.sections.map(s => ({
+          ...s,
+          id: generateStableSectionId(s.title, s.level || 2, s.pageStart),
+        }))
+
+        // Rebuild parentId references using level hierarchy
+        // (LLM's original numeric parentIds are no longer valid with stable IDs)
+        const parentStack = []
+        parsed.sections = parsed.sections.map(s => {
+          const level = s.level || 2
+          while (parentStack.length > 0 && parentStack[parentStack.length - 1].level >= level) {
+            parentStack.pop()
+          }
+          const parentId = parentStack.length > 0 ? parentStack[parentStack.length - 1].id : null
+          parentStack.push({ id: s.id, level })
+          return { ...s, parentId }
+        })
+
         // Filter LLM sections by page range (overlap-based, not strict containment)
-        // A section is kept if its content overlaps with the selected range
         if (pageRange && parsed.sections.some(s => s.pageStart)) {
           const before = parsed.sections.length
 
@@ -128,12 +142,9 @@ export function useDocumentAnalysis() {
           parsed.sections = parsed.sections.filter(s => {
             if (!s.pageStart) return true
             const sectionEnd = sectionEndMap.get(s) || Infinity
-            // Overlap: [pageStart, sectionEnd) ∩ [rangeStart, rangeEnd] ≠ ∅
             return s.pageStart <= pageRange.end && sectionEnd > pageRange.start
           })
-          // Re-index ids after filtering
-          parsed.sections = parsed.sections.map((s, i) => ({ ...s, id: i + 1 }))
-          // Re-assign parentIds (clear broken refs)
+          // Clear parentIds pointing to filtered-out sections
           const validIds = new Set(parsed.sections.map(s => s.id))
           parsed.sections = parsed.sections.map(s => ({
             ...s,

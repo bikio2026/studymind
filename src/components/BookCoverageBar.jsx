@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from '../lib/useTranslation'
 
 /**
  * BookCoverageBar — Torrent-style coverage visualization
@@ -25,6 +26,7 @@ export default function BookCoverageBar({
   totalPages = 0,
   onSectionClick,
 }) {
+  const { t } = useTranslation()
   // Only show level 1-2 sections (chapters/sections, not subsections)
   const sections = useMemo(() => {
     if (!bookStructure?.sections) return []
@@ -59,7 +61,7 @@ export default function BookCoverageBar({
       {showLabel && (
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-xs text-text-muted">
-            Cobertura: {stats.processed} de {stats.total} secciones
+            {t('coverage.label', { n: stats.processed, total: stats.total })}
           </span>
           <span className="text-xs font-medium text-accent">{stats.percent}%</span>
         </div>
@@ -89,14 +91,14 @@ export default function BookCoverageBar({
                   onSectionClick(section)
                 }
               }}
-              title={variant !== 'compact' ? `${section.title}${section.bookPage ? ` (p.${section.bookPage})` : ''} — ${isProcessed ? 'Procesada' : 'Pendiente'}` : undefined}
+              title={variant !== 'compact' ? `${section.title}${section.bookPage ? ` (p.${section.bookPage})` : ''} — ${isProcessed ? t('coverage.processed') : t('coverage.pending')}` : undefined}
             >
               {/* Tooltip for interactive variant */}
               {isInteractive && (
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 pointer-events-none">
                   <div className="bg-surface border border-surface-light rounded-lg px-2 py-1 text-[10px] text-text-dim whitespace-nowrap shadow-lg">
                     {section.title}
-                    {!isProcessed && <span className="text-accent ml-1">Click para procesar</span>}
+                    {!isProcessed && <span className="text-accent ml-1">{t('coverage.clickToProcess')}</span>}
                   </div>
                 </div>
               )}

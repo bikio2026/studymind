@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Check, X, RotateCcw } from 'lucide-react'
+import { useTranslation } from '../lib/useTranslation'
 
 export default function QuizSection({ questions, onComplete }) {
+  const { t } = useTranslation()
   const [answers, setAnswers] = useState({})
   const [revealed, setRevealed] = useState({})
   const [submitted, setSubmitted] = useState(false)
@@ -43,7 +45,7 @@ export default function QuizSection({ questions, onComplete }) {
               onClick={() => revealAnswer(idx)}
               className="text-xs text-accent hover:text-accent/80 transition-colors underline underline-offset-2"
             >
-              Ver respuesta
+              {t('quiz.showAnswer')}
             </button>
           ) : (
             <div className="animate-fadeIn">
@@ -57,20 +59,20 @@ export default function QuizSection({ questions, onComplete }) {
                     onClick={() => markAnswer(idx, true)}
                     className="text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors text-text-muted hover:text-success hover:bg-success/10 border border-surface-light hover:border-success/30"
                   >
-                    <Check className="w-3 h-3" /> Lo sabía
+                    <Check className="w-3 h-3" /> {t('quiz.knew')}
                   </button>
                   <button
                     onClick={() => markAnswer(idx, false)}
                     className="text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors text-text-muted hover:text-error hover:bg-error/10 border border-surface-light hover:border-error/30"
                   >
-                    <X className="w-3 h-3" /> No lo sabía
+                    <X className="w-3 h-3" /> {t('quiz.didntKnow')}
                   </button>
                 </div>
               )}
 
               {answers[idx] !== undefined && (
                 <span className={`text-xs ${answers[idx] ? 'text-success' : 'text-error'}`}>
-                  {answers[idx] ? 'Correcto' : 'A repasar'}
+                  {answers[idx] ? t('quiz.correct') : t('quiz.toReview')}
                 </span>
               )}
             </div>
@@ -82,7 +84,7 @@ export default function QuizSection({ questions, onComplete }) {
         <div className="flex items-center justify-between p-4 bg-surface rounded-lg animate-fadeIn border border-surface-light">
           <div>
             <span className="text-sm font-semibold">
-              Resultado: {Object.values(answers).filter(Boolean).length}/{questions.length}
+              {t('quiz.result')} {Object.values(answers).filter(Boolean).length}/{questions.length}
             </span>
             <span className="text-xs text-text-muted ml-2">
               ({Math.round(Object.values(answers).filter(Boolean).length / questions.length * 100)}%)
@@ -92,7 +94,7 @@ export default function QuizSection({ questions, onComplete }) {
             onClick={reset}
             className="text-xs text-accent hover:text-accent/80 flex items-center gap-1"
           >
-            <RotateCcw className="w-3 h-3" /> Reiniciar
+            <RotateCcw className="w-3 h-3" /> {t('common.reset')}
           </button>
         </div>
       )}

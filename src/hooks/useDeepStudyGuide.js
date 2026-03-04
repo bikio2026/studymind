@@ -18,6 +18,9 @@ const INTER_REQUEST_DELAY = {
 // Threshold: sections with more than this many chars use multi-pass
 const DEEP_MODE_THRESHOLD = 12000
 
+// Max retries per section on recoverable errors (JSON parse, timeout)
+const MAX_SECTION_RETRIES = 2
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -73,13 +76,14 @@ export function useDeepStudyGuide() {
   const reset = useStudyStore(s => s.reset)
 
   // Stream an LLM call and return the parsed JSON
-  const callLLM = async (prompt, { provider, model, promptVersion, maxTokens = 4096 }) => {
+  const callLLM = async (prompt, { provider, model, promptVersion, maxTokens = 4096, language }) => {
     let fullText = ''
     await streamRequest(prompt, {
       provider,
       model,
       promptVersion,
       maxTokens,
+      language,
       onToken: (text) => { fullText = text },
       onDone: (text) => { fullText = text },
       onError: (err) => { throw new Error(err) },
@@ -89,33 +93,42 @@ export function useDeepStudyGuide() {
     let cleaned = fullText.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '')
     let jsonMatch = cleaned.match(/\{[\s\S]*\}/)
 
-    // If no match, try repairing truncated JSON (LLM hit maxTokens before closing brackets)
-    if (!jsonMatch) {
-      let repaired = cleaned
-      const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length
-      const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length
-      if (openBrackets > 0 || openBraces > 0) {
-        // Trim trailing incomplete string/value
-        repaired = repaired.replace(/,\s*"[^"]*$/, '')  // trailing incomplete key
-        repaired = repaired.replace(/,\s*$/, '')          // trailing comma
-        for (let i = 0; i < openBrackets; i++) repaired += ']'
-        for (let i = 0; i < openBraces; i++) repaired += '}'
-        jsonMatch = repaired.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-          console.log('[StudyMind] Repaired truncated JSON successfully')
-        }
-      }
-    }
-
     if (!jsonMatch) {
       console.error('[StudyMind] No JSON in response:', fullText.slice(0, 300))
       return null
     }
-    return JSON.parse(jsonMatch[0])
+
+    // Try parsing directly first
+    try {
+      return JSON.parse(jsonMatch[0])
+    } catch (directErr) {
+      console.warn(`[StudyMind] JSON parse failed, attempting repair...`)
+
+      // Repair: fix truncated JSON, unbalanced brackets, trailing issues
+      let repaired = jsonMatch[0]
+      repaired = repaired.replace(/,\s*"[^"]*$/, '')      // trailing incomplete key
+      repaired = repaired.replace(/:\s*"[^"]*$/, ': ""')   // trailing incomplete value
+      repaired = repaired.replace(/,\s*$/, '')              // trailing comma
+
+      // Balance brackets and braces
+      const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length
+      const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length
+      for (let i = 0; i < openBrackets; i++) repaired += ']'
+      for (let i = 0; i < openBraces; i++) repaired += '}'
+
+      try {
+        const result = JSON.parse(repaired)
+        console.log('[StudyMind] Repaired truncated JSON successfully')
+        return result
+      } catch (repairErr) {
+        console.error('[StudyMind] JSON repair failed:', repairErr.message, '— raw:', fullText.slice(0, 500))
+        return null
+      }
+    }
   }
 
   // Standard mode: 1 call per section (current behavior, for short sections)
-  const generateStandard = async (section, sectionText, structure, { provider, model }) => {
+  const generateStandard = async (section, sectionText, structure, { provider, model, language }) => {
     const allTitles = structure.sections.filter(s => s.level <= 2).map(s => s.title)
     const chunks = chunkText(sectionText, 6000)
 
@@ -124,7 +137,8 @@ export function useDeepStudyGuide() {
       chunks[0],
       structure.title,
       allTitles,
-      chunks.length > 1
+      chunks.length > 1,
+      language
     )
 
     const guide = await callLLM(prompt, {
@@ -132,6 +146,7 @@ export function useDeepStudyGuide() {
       model,
       promptVersion: 'studyGuide',
       maxTokens: 4096,
+      language,
     })
 
     if (!guide || guide.insufficientText || !guide.summary?.trim()) return null
@@ -155,7 +170,7 @@ export function useDeepStudyGuide() {
   }
 
   // Deep mode: multi-pass for long sections
-  const generateDeep = async (section, sectionText, structure, { provider, model }, onPassUpdate) => {
+  const generateDeep = async (section, sectionText, structure, { provider, model, language }, onPassUpdate) => {
     const allTitles = structure.sections.filter(s => s.level <= 2).map(s => s.title)
     const chunks = chunkText(sectionText, 8000)
     const delay = INTER_REQUEST_DELAY[provider] || 1000
@@ -179,12 +194,13 @@ export function useDeepStudyGuide() {
 
       onPassUpdate?.(`Extrayendo puntos clave (${i + 1}/${chunks.length})...`)
 
-      const prompt = buildChunkExtractionPrompt(chunks[i], i, chunks.length, section.title)
+      const prompt = buildChunkExtractionPrompt(chunks[i], i, chunks.length, section.title, language)
       const extract = await callLLM(prompt, {
         provider,
         model: extractModel,
         promptVersion: 'chunkExtraction',
         maxTokens: 4096,
+        language,
       })
 
       if (extract) {
@@ -206,7 +222,8 @@ export function useDeepStudyGuide() {
       section.title,
       chunkExtracts,
       structure.title,
-      allTitles
+      allTitles,
+      language
     )
 
     const synthesis = await callLLM(synthesisPrompt, {
@@ -214,6 +231,7 @@ export function useDeepStudyGuide() {
       model: synthesisModel,
       promptVersion: 'deepSynthesis',
       maxTokens: 16384,
+      language,
     })
 
     if (!synthesis || !synthesis.deepExplanation) {
@@ -230,7 +248,8 @@ export function useDeepStudyGuide() {
     const quizPrompt = buildQuizFromSynthesisPrompt(
       section.title,
       synthesis.deepExplanation,
-      allTitles
+      allTitles,
+      language
     )
 
     const quizData = await callLLM(quizPrompt, {
@@ -238,6 +257,7 @@ export function useDeepStudyGuide() {
       model: quizModel,
       promptVersion: 'studyGuide', // reuse studyGuide system prompt for quiz
       maxTokens: 4096,
+      language,
     })
 
     // Merge everything
@@ -259,7 +279,7 @@ export function useDeepStudyGuide() {
     }
   }
 
-  const generateGuides = useCallback(async (documentId, document, structure, { provider, model }, skipIds = new Set()) => {
+  const generateGuides = useCallback(async (documentId, document, structure, { provider, model, language }, skipIds = new Set()) => {
     setPhase('generating')
     cancelledRef.current = false
 
@@ -292,6 +312,9 @@ export function useDeepStudyGuide() {
 
     const normFullCached = precomputeNormalized(document.fullText)
 
+    // Timeout per section (3 minutes)
+    const SECTION_TIMEOUT = 180000
+
     let generatedCount = 0
     let errorCount = 0
 
@@ -312,55 +335,82 @@ export function useDeepStudyGuide() {
       const sectionLabel = `${section.title}${pageInfo}`
 
       setGeneratingTopic(sectionLabel)
-      setProgress({ current: i, total: contentSections.length })
 
-      try {
-        const { text: sectionText, confidence } = extractSectionTextByPages(
-          document,
-          structure.sections,
-          section.id,
-          normFullCached
-        )
+      const { text: sectionText, confidence } = extractSectionTextByPages(
+        document,
+        structure.sections,
+        section.id,
+        normFullCached
+      )
 
-        if (!isValidSectionText(sectionText)) {
-          console.warn(`[StudyMind] SKIP "${section.title}" — text length: ${sectionText?.length || 0}, confidence: ${confidence}`)
-          continue
+      if (!isValidSectionText(sectionText)) {
+        console.warn(`[StudyMind] SKIP "${section.title}" — text length: ${sectionText?.length || 0}, confidence: ${confidence}`)
+        setProgress({ current: i + 1, total: contentSections.length })
+        continue
+      }
+
+      console.log(`[StudyMind] Processing "${section.title}"${pageInfo} — ${sectionText.length} chars, confidence: ${confidence}`)
+
+      // Retry loop for recoverable errors (JSON parse, timeout)
+      let sectionSuccess = false
+      for (let attempt = 1; attempt <= MAX_SECTION_RETRIES && !sectionSuccess; attempt++) {
+        if (cancelledRef.current) break
+
+        try {
+          const generateTopic = async () => {
+            if (sectionText.length >= DEEP_MODE_THRESHOLD) {
+              return await generateDeep(
+                section, sectionText, structure,
+                { provider, model, language },
+                (passMsg) => setGeneratingTopic(`${sectionLabel} — ${passMsg}`)
+              )
+            } else {
+              return await generateStandard(section, sectionText, structure, { provider, model, language })
+            }
+          }
+
+          const topic = await Promise.race([
+            generateTopic(),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('SECTION_TIMEOUT')), SECTION_TIMEOUT)
+            ),
+          ])
+
+          if (topic) {
+            topic.confidence = confidence
+            await addTopic(documentId, topic)
+            generatedCount++
+            sectionSuccess = true
+            console.log(`[StudyMind] ✓ "${section.title}" — mode: ${topic.mode}, deepExplanation: ${topic.deepExplanation?.length || 0} chars${attempt > 1 ? ` (attempt ${attempt})` : ''}`)
+          } else if (attempt < MAX_SECTION_RETRIES) {
+            console.warn(`[StudyMind] ⟳ "${section.title}" returned null, retrying (${attempt}/${MAX_SECTION_RETRIES})...`)
+            await sleep(2000)
+          }
+        } catch (err) {
+          if (err.name === 'AbortError' || cancelledRef.current) {
+            console.log(`[StudyMind] Generation cancelled at "${section.title}"`)
+            break
+          }
+          if (attempt < MAX_SECTION_RETRIES) {
+            const reason = err.message === 'SECTION_TIMEOUT' ? 'timeout' : 'error'
+            console.warn(`[StudyMind] ⟳ "${section.title}" ${reason}, retrying (${attempt}/${MAX_SECTION_RETRIES})...`)
+            await sleep(2000)
+          } else {
+            console.error(`[StudyMind] ✗ "${section.title}" failed after ${MAX_SECTION_RETRIES} attempts:`, err.message)
+          }
         }
+      }
 
-        console.log(`[StudyMind] Processing "${section.title}"${pageInfo} — ${sectionText.length} chars, confidence: ${confidence}`)
+      if (cancelledRef.current) break
 
-        let topic
+      if (!sectionSuccess) errorCount++
 
-        if (sectionText.length >= DEEP_MODE_THRESHOLD) {
-          // Deep mode: multi-pass
-          topic = await generateDeep(
-            section, sectionText, structure,
-            { provider, model },
-            (passMsg) => setGeneratingTopic(`${sectionLabel} — ${passMsg}`)
-          )
-        } else {
-          // Standard mode: single call
-          topic = await generateStandard(section, sectionText, structure, { provider, model })
-        }
+      // Progress updated AFTER section completes (fixes N-1/N freeze on last section)
+      setProgress({ current: i + 1, total: contentSections.length })
 
-        if (topic) {
-          topic.confidence = confidence
-          await addTopic(documentId, topic)
-          generatedCount++
-          console.log(`[StudyMind] ✓ "${section.title}" — mode: ${topic.mode}, deepExplanation: ${topic.deepExplanation?.length || 0} chars`)
-        }
-
-        // Delay between sections
-        if (i < contentSections.length - 1 && !cancelledRef.current) {
-          await sleep(INTER_REQUEST_DELAY[provider] || 1000)
-        }
-      } catch (err) {
-        if (err.name === 'AbortError' || cancelledRef.current) {
-          console.log(`[StudyMind] Generation cancelled at "${section.title}"`)
-          break
-        }
-        console.error(`Error generando guía para "${section.title}":`, err)
-        errorCount++
+      // Delay between sections
+      if (i < contentSections.length - 1 && !cancelledRef.current) {
+        await sleep(INTER_REQUEST_DELAY[provider] || 1000)
       }
     }
 
@@ -389,7 +439,7 @@ export function useDeepStudyGuide() {
   }, [cancelStream])
 
   // Regenerate a single section (always deep for long sections)
-  const regenerateSection = useCallback(async (documentId, document, structure, sectionId, { provider, model }) => {
+  const regenerateSection = useCallback(async (documentId, document, structure, sectionId, { provider, model, language }) => {
     const section = structure.sections.find(s => s.id === sectionId)
     if (!section) return
 
@@ -411,11 +461,11 @@ export function useDeepStudyGuide() {
       if (sectionText.length >= DEEP_MODE_THRESHOLD) {
         topic = await generateDeep(
           section, sectionText, structure,
-          { provider, model },
+          { provider, model, language },
           (passMsg) => setGeneratingTopic(`${section.title} — ${passMsg}`)
         )
       } else {
-        topic = await generateStandard(section, sectionText, structure, { provider, model })
+        topic = await generateStandard(section, sectionText, structure, { provider, model, language })
       }
 
       if (topic) {

@@ -6,8 +6,10 @@ import LearningPath from './LearningPath'
 import ProgressDashboard from './ProgressDashboard'
 import BookCoverageBar from './BookCoverageBar'
 import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3, List, Route, PlusCircle } from 'lucide-react'
+import { useTranslation } from '../lib/useTranslation'
 
-export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming, bookData, onExpandCoverage, onNavigateToDocument }) {
+export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming, bookData, onExpandCoverage, onNavigateToDocument, language }) {
+  const { t } = useTranslation()
   const [activeTopic, setActiveTopic] = useState(null)
   const [filter, setFilter] = useState('all')
   const [showDashboard, setShowDashboard] = useState(false)
@@ -53,7 +55,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
               }`}
             >
               <List className="w-3 h-3" />
-              Índice
+              {t('guide.outline')}
             </button>
             <button
               onClick={() => setSidebarTab('path')}
@@ -64,7 +66,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
               }`}
             >
               <Route className="w-3 h-3" />
-              Ruta
+              {t('guide.path')}
             </button>
           </div>
         )}
@@ -98,7 +100,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
           <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/5 border border-amber-500/15 animate-fadeIn">
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
             <span className="text-sm text-text-dim flex-1">
-              Documento incompleto: {topics.length} de {totalSections} temas generados
+              {t('guide.incomplete', { current: topics.length, total: totalSections })}
             </span>
             {onResume && (
               <button
@@ -111,12 +113,12 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
                 {resuming ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    Procesando...
+                    {t('common.processing')}
                   </>
                 ) : (
                   <>
                     <Play className="w-3 h-3" />
-                    Continuar procesando
+                    {t('guide.resume')}
                   </>
                 )}
               </button>
@@ -141,7 +143,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
                   transition-colors"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
-                Ampliar cobertura
+                {t('guide.expandCoverage')}
               </button>
             )}
           </div>
@@ -164,7 +166,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
                     ? 'bg-accent/15 text-accent'
                     : 'hover:bg-surface-alt text-text-muted hover:text-text'
                 }`}
-                title="Dashboard de progreso"
+                title={t('guide.progressDashboard')}
               >
                 <BarChart3 className="w-4 h-4" />
               </button>
@@ -199,6 +201,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
             documentId={documentId}
             bookPage={structure.sections.find(s => s.id === currentTopic.id)?.bookPage}
             provider={provider}
+            language={language}
             sections={structure.sections}
             topics={topics}
             onNavigateToTopic={setActiveTopic}
@@ -207,17 +210,17 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
           />
         ) : filteredTopics.length === 0 && filter !== 'all' ? (
           <div className="text-center text-text-muted py-20">
-            <p>No hay temas con este nivel de relevancia</p>
+            <p>{t('guide.noTopicsFilter')}</p>
             <button
               onClick={() => setFilter('all')}
               className="text-accent text-sm mt-2 hover:underline"
             >
-              Ver todos
+              {t('guide.viewAll')}
             </button>
           </div>
         ) : (
           <div className="text-center text-text-muted py-20">
-            <p>Seleccioná un tema del panel lateral</p>
+            <p>{t('guide.selectTopic')}</p>
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Send, Square, Trash2, User, Bot } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
+import { useTranslation } from '../lib/useTranslation'
 
 function ChatBubble({ message, isStreaming = false }) {
   const isUser = message.role === 'user'
@@ -32,7 +33,8 @@ function ChatBubble({ message, isStreaming = false }) {
   )
 }
 
-export default function ChatSection({ topic, documentId, provider }) {
+export default function ChatSection({ topic, documentId, provider, language }) {
+  const { t } = useTranslation()
   const {
     messages,
     loading,
@@ -40,7 +42,7 @@ export default function ChatSection({ topic, documentId, provider }) {
     sendMessage,
     cancel,
     reset,
-  } = useChat(documentId, topic.id, topic, provider)
+  } = useChat(documentId, topic.id, topic, provider, language)
 
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
@@ -71,7 +73,7 @@ export default function ChatSection({ topic, documentId, provider }) {
       <div className="max-h-[400px] overflow-y-auto space-y-3 mb-3 pr-1 scrollbar-thin">
         {messages.length === 0 && !loading && (
           <p className="text-xs text-text-muted text-center py-6">
-            Preguntale lo que quieras sobre este tema. Te voy a guiar para que llegues a la respuesta.
+            {t('chat.emptyState')}
           </p>
         )}
 
@@ -97,7 +99,7 @@ export default function ChatSection({ topic, documentId, provider }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Escribí tu pregunta..."
+          placeholder={t('chat.placeholder')}
           disabled={loading}
           className="flex-1 bg-surface/80 border border-surface-light rounded-lg px-3 py-2 text-sm text-text
             placeholder:text-text-muted/50 focus:outline-none focus:border-accent/50
@@ -108,7 +110,7 @@ export default function ChatSection({ topic, documentId, provider }) {
             type="button"
             onClick={cancel}
             className="p-2 rounded-lg bg-error/10 text-error hover:bg-error/20 border border-error/20 transition-colors"
-            title="Cancelar"
+            title={t('chat.cancel')}
           >
             <Square className="w-4 h-4" />
           </button>
@@ -118,7 +120,7 @@ export default function ChatSection({ topic, documentId, provider }) {
             disabled={!input.trim()}
             className="p-2 rounded-lg bg-accent/10 text-accent hover:bg-accent/20 border border-accent/20
               transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Enviar"
+            title={t('chat.send')}
           >
             <Send className="w-4 h-4" />
           </button>
@@ -128,7 +130,7 @@ export default function ChatSection({ topic, documentId, provider }) {
             type="button"
             onClick={reset}
             className="p-2 rounded-lg hover:bg-surface-light text-text-muted hover:text-text transition-colors"
-            title="Limpiar chat"
+            title={t('chat.clear')}
           >
             <Trash2 className="w-4 h-4" />
           </button>

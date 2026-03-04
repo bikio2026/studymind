@@ -2,12 +2,13 @@ import { useState, useMemo } from 'react'
 import { BookOpen, ChevronDown, ChevronRight } from 'lucide-react'
 import { useProgressStore } from '../stores/progressStore'
 import { getMasteryLevel, MASTERY_LEVELS, getDocumentStats } from '../lib/proficiency'
+import { useTranslation } from '../lib/useTranslation'
 
 // Relevance badge styles
 const RELEVANCE = {
-  core: { label: 'Core', cls: 'text-accent bg-accent/10 border-accent/20' },
-  supporting: { label: 'Soporte', cls: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
-  detail: { label: 'Detalle', cls: 'text-text-muted bg-surface-light border-surface-light/80' },
+  core: { labelKey: 'filter.core', cls: 'text-accent bg-accent/10 border-accent/20' },
+  supporting: { labelKey: 'filter.supporting', cls: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
+  detail: { labelKey: 'filter.detail', cls: 'text-text-muted bg-surface-light border-surface-light/80' },
 }
 
 // Mastery dot styles
@@ -21,6 +22,7 @@ const MASTERY_DOT = {
 
 // Single topic item — always visible, always clickable
 function TopicItem({ topic, section, isActive, mastery, onClick }) {
+  const { t } = useTranslation()
   const rel = RELEVANCE[topic.relevance] || RELEVANCE.detail
   const dotCls = MASTERY_DOT[mastery] || MASTERY_DOT['sin-empezar']
 
@@ -49,7 +51,7 @@ function TopicItem({ topic, section, isActive, mastery, onClick }) {
           <div className="flex items-center gap-2 mt-1">
             {/* Relevance badge */}
             <span className={`text-[9px] font-medium uppercase tracking-wide px-1.5 py-px rounded border ${rel.cls}`}>
-              {rel.label}
+              {t(rel.labelKey)}
             </span>
 
             {/* Book page */}
@@ -67,10 +69,11 @@ function TopicItem({ topic, section, isActive, mastery, onClick }) {
 
 // Unprocessed section item — disabled, grayed out
 function UnprocessedItem({ section }) {
+  const { t } = useTranslation()
   return (
     <div
       className="w-full text-left px-3 py-2.5 rounded-lg opacity-40 cursor-default"
-      title="Usá 'Ampliar cobertura' para procesar esta sección"
+      title={t('outline.expandToProcess')}
     >
       <div className="flex items-start gap-2.5">
         <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1 border border-text-muted/20 border-dashed" />
@@ -80,7 +83,7 @@ function UnprocessedItem({ section }) {
           </span>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-[9px] font-medium uppercase tracking-wide px-1.5 py-px rounded border text-text-muted/50 bg-surface-light/30 border-surface-light/40">
-              No procesada
+              {t('outline.unprocessed')}
             </span>
             {section.bookPage && (
               <span className="text-[10px] text-text-muted/30 font-mono">
@@ -127,6 +130,7 @@ function ChapterGroup({ title, children, defaultExpanded = true, topicCount, mas
 export default function DocumentOutline({ structure, topics, activeTopic, onSelectTopic, bookStructure, processedSectionIds }) {
   if (!structure) return null
 
+  const { t } = useTranslation()
   const progress = useProgressStore(s => s.progress)
   const stats = getDocumentStats(topics, progress)
 
@@ -154,7 +158,10 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
 
     function getRootAncestor(sectionId) {
       let s = sectionMap.get(String(sectionId))
+      const visited = new Set()
       while (s?.parentId && sectionMap.has(String(s.parentId))) {
+        if (visited.has(String(s.parentId))) break // cycle detection
+        visited.add(String(s.parentId))
         s = sectionMap.get(String(s.parentId))
       }
       return s
@@ -173,6 +180,11 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
     }
 
     const groups = [...groupMap.values()]
+      .sort((a, b) => (a.chapter?.pageStart || 0) - (b.chapter?.pageStart || 0))
+    // Sort items within each group by page
+    for (const g of groups) {
+      g.items.sort((a, b) => (a.section?.pageStart || 0) - (b.section?.pageStart || 0))
+    }
     return { groups, isSingleGroup: groups.length <= 1 }
   }, [structure.sections, topics])
 
@@ -190,7 +202,7 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
           </h2>
           {hasBookView && (
             <p className="text-[10px] text-text-muted mt-0.5">
-              {bookSections.filter(s => s.isProcessed).length} de {bookSections.length} secciones
+              {t('outline.sectionsCount', { n: bookSections.filter(s => s.isProcessed).length, total: bookSections.length })}
             </p>
           )}
         </div>
@@ -200,7 +212,7 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
       {hasBookView && (
         <div className="mb-3 pb-3 border-b border-surface-light/50">
           <p className="text-[10px] text-text-dim uppercase tracking-wider font-medium mb-2 px-2">
-            Secciones del libro
+            {t('outline.bookSections')}
           </p>
           <div className="space-y-0.5">
             {bookSections.map(({ section, isProcessed, topic, isInCurrentDoc }) => {
@@ -223,7 +235,7 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
                   <div
                     key={`book-${section.id}`}
                     className="w-full text-left px-3 py-2 rounded-lg opacity-60"
-                    title="Procesada en otro import"
+                    title={t('outline.processedOtherImport')}
                   >
                     <div className="flex items-start gap-2.5">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1 bg-amber-400/60" />
@@ -231,7 +243,7 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
                         <span className="text-[12px] leading-snug line-clamp-1 text-text-muted">
                           {section.title}
                         </span>
-                        <span className="text-[9px] text-amber-500/60 mt-0.5 block">Otro import</span>
+                        <span className="text-[9px] text-amber-500/60 mt-0.5 block">{t('outline.otherImport')}</span>
                       </div>
                     </div>
                   </div>
@@ -248,12 +260,12 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
       <nav className="space-y-0.5">
         {hasBookView && topics.length > 0 && (
           <p className="text-[10px] text-text-dim uppercase tracking-wider font-medium mb-2 px-2">
-            Temas de este import
+            {t('outline.thisImport')}
           </p>
         )}
         {topics.length === 0 ? (
           <p className="text-xs text-text-muted/60 text-center py-4">
-            Procesando temas...
+            {t('outline.processingTopics')}
           </p>
         ) : isSingleGroup ? (
           // Single chapter: flat list of topics
@@ -278,7 +290,7 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
             return (
               <ChapterGroup
                 key={group.chapter?.id || '_root'}
-                title={group.chapter?.title || 'General'}
+                title={group.chapter?.title || t('outline.general')}
                 topicCount={group.items.length}
                 masteredCount={groupMastered}
               >
@@ -302,7 +314,7 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
       {topics.length > 0 && (
         <div className="mt-4 pt-3 border-t border-surface-light space-y-1.5 text-xs text-text-muted">
           <div className="flex justify-between">
-            <span>Dominados</span>
+            <span>{t('outline.mastered')}</span>
             <span className="text-text-dim">{masteredCount} / {topics.length}</span>
           </div>
 
@@ -322,13 +334,13 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
                   key={key}
                   className={`h-full ${bgMap[key]} transition-all duration-300`}
                   style={{ width: `${pct}%` }}
-                  title={`${MASTERY_LEVELS[key].label}: ${stats.byMastery[key]}`}
+                  title={`${t('mastery.' + key)}: ${stats.byMastery[key]}`}
                 />
               )
             })}
           </div>
           <div className="text-[10px] text-text-muted/60 text-center">
-            {masteryPct}% dominado
+            {masteryPct}{t('outline.masteredPct')}
           </div>
         </div>
       )}
