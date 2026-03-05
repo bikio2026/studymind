@@ -44,6 +44,29 @@ export const useProgressStore = create((set, get) => ({
     }))
   },
 
+  // Save individual quiz answer (persists immediately)
+  saveQuizAnswer: async (documentId, topicId, questionIndex, answerData) => {
+    const current = get().progress[topicId] || { studied: false, quizScores: [], resets: [] }
+    const quizAnswers = { ...(current.quizAnswers || {}), [questionIndex]: { ...answerData, date: Date.now() } }
+    const updated = { ...current, quizAnswers }
+
+    await db.saveProgress(documentId, topicId, updated)
+    set(state => ({
+      progress: { ...state.progress, [topicId]: updated },
+    }))
+  },
+
+  // Reset saved quiz answers for a topic
+  resetQuizAnswers: async (documentId, topicId) => {
+    const current = get().progress[topicId] || { studied: false, quizScores: [], resets: [] }
+    const updated = { ...current, quizAnswers: {} }
+
+    await db.saveProgress(documentId, topicId, updated)
+    set(state => ({
+      progress: { ...state.progress, [topicId]: updated },
+    }))
+  },
+
   // Reset progress for a topic (keeps history)
   resetTopic: async (documentId, topicId) => {
     const current = get().progress[topicId] || { studied: false, quizScores: [], resets: [] }

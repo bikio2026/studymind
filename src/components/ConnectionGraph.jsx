@@ -13,7 +13,7 @@ function truncate(str, max = 18) {
   return str.length > max ? str.slice(0, max) + '…' : str
 }
 
-export default function ConnectionGraph({ topics, sections, activeTopic, onSelectTopic, allBookTopics }) {
+export default function ConnectionGraph({ topics, sections, activeTopic, onSelectTopic, allBookTopics, fullscreen }) {
   const { t } = useTranslation()
   const [hovered, setHovered] = useState(null)
   const svgRef = useRef(null)
@@ -37,8 +37,11 @@ export default function ConnectionGraph({ topics, sections, activeTopic, onSelec
 
     // Build nodes with circular positions
     const count = sorted.length
-    const cx = 250, cy = 250
-    const radius = Math.min(200, Math.max(100, count * 12))
+    const base = fullscreen ? 400 : 250
+    const cx = base, cy = base
+    const maxR = fullscreen ? 350 : 200
+    const minR = fullscreen ? 150 : 100
+    const radius = Math.min(maxR, Math.max(minR, count * (fullscreen ? 20 : 12)))
 
     const nodeList = sorted.map((topic, i) => {
       const angle = (2 * Math.PI * i) / count - Math.PI / 2
@@ -129,7 +132,7 @@ export default function ConnectionGraph({ topics, sections, activeTopic, onSelec
           ref={svgRef}
           viewBox={`${minX} ${minY} ${vw} ${vh}`}
           className="w-full h-full"
-          style={{ minHeight: 200 }}
+          style={{ minHeight: fullscreen ? 500 : 200 }}
         >
           {/* Edges */}
           {edges.map((edge, i) => {

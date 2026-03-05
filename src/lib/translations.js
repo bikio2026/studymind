@@ -348,6 +348,11 @@ export const translations = {
     'preReading.generate': 'Generar preguntas',
     'preReading.addOwn': 'Agregar tu propia pregunta',
     'preReading.addPlaceholder': '¿Qué te gustaría saber sobre este tema?',
+    'preReading.answer': 'Responder',
+    'preReading.answerPlaceholder': 'Escribí lo que sabés o pensás sobre esta pregunta...',
+    'preReading.evaluate': 'Evaluar',
+    'preReading.lookFor': 'Al leer, prestá atención a:',
+    'preReading.clearAnswer': 'Borrar respuesta',
 
     // Bloom's taxonomy
     'bloom.recall': 'Recordar',
@@ -368,6 +373,25 @@ export const translations = {
     'studyPhase.consolidation.desc': 'Quiz y chat socrático para fijar el conocimiento',
     'studyPhase.current': 'Actual',
     'studyPhase.topics': 'Temas',
+    'studyPhase.recommendPrevious': 'Recomendado: completá {phase} primero',
+
+    // Connection map
+    'guide.connectionMap': 'Mapa de conexiones',
+
+    // Tutor observations
+    'tutor.title': 'Observaciones del tutor',
+    'tutor.settingsDesc': 'Creá guías focalizadas según las dificultades del estudiante',
+    'tutor.inputDesc': 'Describí la dificultad del estudiante. La plataforma va a generar preguntas y guías focalizadas.',
+    'tutor.scope': 'Alcance',
+    'tutor.global': 'Todo el documento',
+    'tutor.placeholder': 'Ej: Le cuesta interpretar que el equilibrio IS-LM tiene por detrás dos equilibrios anteriores, uno en bienes y otro en dinero.',
+    'tutor.generateFocus': 'Generar foco',
+    'tutor.history': 'Observaciones guardadas',
+    'tutor.questionsCount': 'preguntas',
+    'tutor.focusQuestions': 'Preguntas focalizadas',
+    'tutor.miniGuide': 'Mini-guía explicativa',
+    'tutor.relevantTopics': 'Temas relevantes',
+    'tutor.delete': 'Eliminar observación',
   },
 
   en: {
@@ -716,6 +740,11 @@ export const translations = {
     'preReading.generate': 'Generate questions',
     'preReading.addOwn': 'Add your own question',
     'preReading.addPlaceholder': 'What would you like to know about this topic?',
+    'preReading.answer': 'Answer',
+    'preReading.answerPlaceholder': 'Write what you know or think about this question...',
+    'preReading.evaluate': 'Evaluate',
+    'preReading.lookFor': 'When reading, pay attention to:',
+    'preReading.clearAnswer': 'Clear answer',
 
     // Bloom's taxonomy
     'bloom.recall': 'Recall',
@@ -736,5 +765,24 @@ export const translations = {
     'studyPhase.consolidation.desc': 'Quiz and Socratic chat to solidify knowledge',
     'studyPhase.current': 'Current',
     'studyPhase.topics': 'Topics',
+    'studyPhase.recommendPrevious': 'Recommended: complete {phase} first',
+
+    // Connection map
+    'guide.connectionMap': 'Connection map',
+
+    // Tutor observations
+    'tutor.title': 'Tutor observations',
+    'tutor.settingsDesc': 'Create focused guides based on student difficulties',
+    'tutor.inputDesc': 'Describe the student\'s difficulty. The platform will generate focused questions and guides.',
+    'tutor.scope': 'Scope',
+    'tutor.global': 'Entire document',
+    'tutor.placeholder': 'E.g.: Struggles to understand that the IS-LM equilibrium has two previous equilibria behind it, one in goods and one in money.',
+    'tutor.generateFocus': 'Generate focus',
+    'tutor.history': 'Saved observations',
+    'tutor.questionsCount': 'questions',
+    'tutor.focusQuestions': 'Focused questions',
+    'tutor.miniGuide': 'Explanatory mini-guide',
+    'tutor.relevantTopics': 'Relevant topics',
+    'tutor.delete': 'Delete observation',
   },
 }

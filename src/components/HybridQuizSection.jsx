@@ -50,18 +50,32 @@ function ScoreBar({ score }) {
   )
 }
 
-export default function HybridQuizSection({ questions, topicContext, provider, language, onComplete }) {
+export default function HybridQuizSection({ questions, topicContext, provider, language, onComplete, savedAnswers, onSaveAnswer, onResetAnswers }) {
   const { t } = useTranslation()
   const bloomEnabled = useFeatureStore(s => s.features.bloomBadges)
 
   // Per-question state: { mode: 'pending'|'self'|'freetext', revealed, selfAnswer, textAnswer, evaluation, score }
-  const [questionStates, setQuestionStates] = useState({})
+  const [questionStates, setQuestionStates] = useState(() => {
+    // Load saved answers if available
+    if (savedAnswers && Object.keys(savedAnswers).length > 0) {
+      const states = {}
+      for (const [idx, data] of Object.entries(savedAnswers)) {
+        states[idx] = { ...data }
+      }
+      return states
+    }
+    return {}
+  })
   const [evaluatingIdx, setEvaluatingIdx] = useState(null)
   const [error, setError] = useState(null)
   const [showModelAnswer, setShowModelAnswer] = useState({})
   const { streamRequest, cancel } = useLLMStream()
   const cancelledRef = useRef(false)
-  const completedRef = useRef(false)
+  const completedRef = useRef(
+    // If loading saved answers that were already complete, mark as completed
+    savedAnswers && Object.keys(savedAnswers).length === questions.length &&
+    Object.values(savedAnswers).every(s => s.score !== undefined)
+  )
 
   const getState = (idx) => questionStates[idx] || { mode: 'pending' }
 
@@ -97,6 +111,8 @@ export default function HybridQuizSection({ questions, topicContext, provider, l
     setQuestionStates(prev => {
       const updated = { ...prev, [idx]: { ...prev[idx], selfAnswer: correct, score } }
       checkAllCompleted(updated)
+      // Persist this answer
+      onSaveAnswer?.(idx, { mode: 'self', revealed: true, selfAnswer: correct, score })
       return updated
     })
   }
@@ -157,6 +173,8 @@ export default function HybridQuizSection({ questions, topicContext, provider, l
       setQuestionStates(prev => {
         const updated = { ...prev, [idx]: { ...prev[idx], evaluation, score } }
         checkAllCompleted(updated)
+        // Persist this answer
+        onSaveAnswer?.(idx, { mode: 'freetext', textAnswer: prev[idx]?.textAnswer, evaluation, score })
         return updated
       })
     } catch (err) {
@@ -176,6 +194,7 @@ export default function HybridQuizSection({ questions, topicContext, provider, l
     setEvaluatingIdx(null)
     setError(null)
     setShowModelAnswer({})
+    onResetAnswers?.()
   }
 
   const toggleModelAnswer = (idx) => {
@@ -328,10 +347,16 @@ export default function HybridQuizSection({ questions, topicContext, provider, l
         )
       })}
 
-      {/* Progress */}
+      {/* Progress + reset */}
       {completedCount > 0 && !allCompleted && (
-        <div className="text-xs text-text-muted text-center">
-          {t('freeQuiz.evaluated', { n: completedCount, total: questions.length })}
+        <div className="flex items-center justify-between text-xs text-text-muted">
+          <span>{t('freeQuiz.evaluated', { n: completedCount, total: questions.length })}</span>
+          <button
+            onClick={reset}
+            className="text-xs text-text-muted hover:text-accent flex items-center gap-1 transition-colors"
+          >
+            <RotateCcw className="w-3 h-3" /> {t('common.reset')}
+          </button>
         </div>
       )}
 

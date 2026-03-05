@@ -10,6 +10,7 @@ import BookCoverageBar from './BookCoverageBar'
 import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3, List, Route, Network, PlusCircle, FileDown, Paperclip, Menu, X, BookOpen, Settings } from 'lucide-react'
 import { useTranslation } from '../lib/useTranslation'
 import FeatureSettings from './FeatureSettings'
+import TutorObservations from './TutorObservations'
 import { useFeatureStore } from '../stores/featureStore'
 
 export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming, bookData, onExpandCoverage, onDownloadPDF, pdfAvailable, onLinkPDF, onNavigateToDocument, language, onHeaderVisibilityChange }) {
@@ -24,6 +25,8 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
     return !localStorage.getItem('studymind-sidebar-used')
   })
   const [showSettings, setShowSettings] = useState(false)
+  const [showTutor, setShowTutor] = useState(false)
+  const [showMapModal, setShowMapModal] = useState(false)
   const loadFeatures = useFeatureStore(s => s.load)
   const provider = typeof localStorage !== 'undefined'
     ? (localStorage.getItem('studymind-llm-provider') || 'claude')
@@ -339,6 +342,13 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
               </button>
             )}
             <button
+              onClick={() => setShowMapModal(true)}
+              className="p-1.5 rounded-lg hover:bg-surface-alt text-text-muted hover:text-text transition-colors"
+              title={t('guide.connectionMap')}
+            >
+              <Network className="w-4 h-4" />
+            </button>
+            <button
               onClick={() => setShowSettings(true)}
               className="p-1.5 rounded-lg hover:bg-surface-alt text-text-muted hover:text-text transition-colors"
               title={t('features.title')}
@@ -407,7 +417,41 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
           </div>
         )}
       </div>
-      <FeatureSettings open={showSettings} onClose={() => setShowSettings(false)} />
+      {/* Fullscreen Connection Map Modal */}
+      {showMapModal && (
+        <div className="fixed inset-0 z-50 bg-surface/95 backdrop-blur-sm flex flex-col">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-surface-light/20">
+            <div className="flex items-center gap-2">
+              <Network className="w-5 h-5 text-accent" />
+              <h2 className="text-base font-semibold text-text">{t('guide.connectionMap')}</h2>
+            </div>
+            <button
+              onClick={() => setShowMapModal(false)}
+              className="p-2 rounded-lg hover:bg-surface-light/30 text-text-muted transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 p-4 overflow-hidden">
+            <ConnectionGraph
+              topics={sortedTopics}
+              sections={structure.sections}
+              activeTopic={activeTopic}
+              onSelectTopic={(id) => { handleSelectTopic(id); setShowMapModal(false) }}
+              allBookTopics={bookData?.bookTopics}
+              fullscreen
+            />
+          </div>
+        </div>
+      )}
+      <FeatureSettings open={showSettings} onClose={() => setShowSettings(false)} onOpenTutor={() => setShowTutor(true)} />
+      <TutorObservations
+        open={showTutor}
+        onClose={() => setShowTutor(false)}
+        topics={sortedTopics}
+        provider={provider}
+        language={language}
+      />
     </div>
   )
 }

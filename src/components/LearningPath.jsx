@@ -1,4 +1,5 @@
-import { Route, ChevronRight, Star, BookOpen, Layers, Eye, Brain, Trophy, CheckCircle } from 'lucide-react'
+import { useState } from 'react'
+import { Route, ChevronRight, ChevronDown, ChevronUp, Star, BookOpen, Layers, Eye, Brain, Trophy, CheckCircle, Info } from 'lucide-react'
 import { useProgressStore } from '../stores/progressStore'
 import { useFeatureStore } from '../stores/featureStore'
 import { buildLearningPath, getPhaseStats, getNextRecommendation } from '../lib/learningPath'
@@ -127,6 +128,13 @@ export default function LearningPath({ topics, activeTopic, onSelectTopic }) {
   const path = buildLearningPath(topics, progress)
   const recommendation = getNextRecommendation(topics, progress, activeTopic)
 
+  // Expandable phases state — panorama open by default
+  const [expandedPhases, setExpandedPhases] = useState({ panorama: true, deep: false, consolidation: false })
+
+  const togglePhase = (key) => {
+    setExpandedPhases(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
   if (path.length === 0) return null
 
   // If learning path feature is disabled, show legacy view
@@ -209,7 +217,6 @@ export default function LearningPath({ topics, activeTopic, onSelectTopic }) {
   }
 
   // 3-phase study path: Panorama → Profundización → Consolidación
-  // All topics go through all 3 phases, progress is tracked per topic
   const allTopics = path.map(p => ({
     topic: p.topic,
     mastery: p.mastery,
@@ -217,20 +224,25 @@ export default function LearningPath({ topics, activeTopic, onSelectTopic }) {
   }))
 
   // Phase stats
-  const phaseStats = STUDY_PHASES.map(phase => {
+  const phaseStats = STUDY_PHASES.map((phase) => {
     let done = 0
     for (const item of allTopics) {
       if (phase.key === 'panorama' && item.mastery !== 'sin-empezar') done++
       else if (phase.key === 'deep' && ['aprendiendo', 'dominado', 'experto'].includes(item.mastery)) done++
       else if (phase.key === 'consolidation' && ['dominado', 'experto'].includes(item.mastery)) done++
     }
+    const pct = allTopics.length > 0 ? Math.round((done / allTopics.length) * 100) : 0
+
     return {
       ...phase,
       done,
       total: allTopics.length,
-      pct: allTopics.length > 0 ? Math.round((done / allTopics.length) * 100) : 0,
+      pct,
     }
   })
+
+  // Find current phase (the first incomplete one)
+  const currentPhaseIdx = phaseStats.findIndex(p => p.pct < 100)
 
   return (
     <div className="space-y-4">
@@ -251,76 +263,83 @@ export default function LearningPath({ topics, activeTopic, onSelectTopic }) {
         </button>
       )}
 
-      {/* Study phases overview */}
-      <div className="space-y-3">
+      {/* Study phases — expandable, all accessible */}
+      <div className="space-y-2">
         {phaseStats.map((phase, phaseIdx) => {
           const PhaseIcon = phase.icon
-          const isActive = phaseIdx === 0
-            ? phase.pct < 100
-            : phaseStats[phaseIdx - 1].pct === 100 && phase.pct < 100
-          const isLocked = phaseIdx > 0 && phaseStats[phaseIdx - 1].pct < 50
+          const isCurrent = phaseIdx === (currentPhaseIdx >= 0 ? currentPhaseIdx : 0)
+          const isExpanded = expandedPhases[phase.key]
+          const isPreviousIncomplete = phaseIdx > 0 && phaseStats[phaseIdx - 1].pct < 30
 
           return (
-            <div key={phase.key} className={isLocked ? 'opacity-50' : ''}>
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  <PhaseIcon className={`w-3.5 h-3.5 ${phase.color}`} />
-                  <span className={`text-[11px] font-medium ${phase.color}`}>
-                    {t(`studyPhase.${phase.key}`)}
-                  </span>
-                  {isActive && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">
-                      {t('studyPhase.current')}
+            <div key={phase.key}>
+              {/* Phase header — clickable to expand/collapse */}
+              <button
+                onClick={() => togglePhase(phase.key)}
+                className={`w-full text-left rounded-lg px-3 py-2.5 transition-colors ${
+                  isCurrent ? `${phase.bg} border ${phase.border}` : 'hover:bg-surface-light/30'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <PhaseIcon className={`w-3.5 h-3.5 ${phase.color}`} />
+                    <span className={`text-[11px] font-medium ${phase.color}`}>
+                      {t(`studyPhase.${phase.key}`)}
                     </span>
-                  )}
+                    {isCurrent && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">
+                        {t('studyPhase.current')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-text-muted">
+                      {phase.done}/{phase.total}
+                    </span>
+                    {isExpanded ? (
+                      <ChevronUp className="w-3 h-3 text-text-muted" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3 text-text-muted" />
+                    )}
+                  </div>
                 </div>
-                <span className="text-[10px] text-text-muted">
-                  {phase.done}/{phase.total}
-                </span>
-              </div>
-              <div className="h-1.5 bg-surface-light/50 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${phase.barColor}`}
-                  style={{ width: `${phase.pct}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-text-muted mt-1">
-                {t(`studyPhase.${phase.key}.desc`)}
-              </p>
+                <div className="h-1.5 bg-surface-light/50 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${phase.barColor}`}
+                    style={{ width: `${phase.pct}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-text-muted mt-1">
+                  {t(`studyPhase.${phase.key}.desc`)}
+                </p>
+              </button>
+
+              {/* Expanded topics list */}
+              {isExpanded && (
+                <div className="mt-1 ml-2 space-y-0.5 relative animate-fadeIn">
+                  {/* Soft recommendation hint */}
+                  {isPreviousIncomplete && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-text-muted bg-surface-light/20 rounded-lg mb-1">
+                      <Info className="w-3 h-3 shrink-0" />
+                      {t('studyPhase.recommendPrevious', { phase: t(`studyPhase.${STUDY_PHASES[phaseIdx - 1].key}`) })}
+                    </div>
+                  )}
+                  <div className="absolute left-[17px] top-2 bottom-2 w-px bg-surface-light/50" />
+                  {allTopics.map(item => (
+                    <StudyPhaseNode
+                      key={item.topic.id}
+                      topic={item.topic}
+                      mastery={item.mastery}
+                      isActive={activeTopic === item.topic.id}
+                      onClick={onSelectTopic}
+                      phase={phase.key}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )
         })}
-      </div>
-
-      {/* Topics list (all topics, showing mastery) */}
-      <div className="space-y-0.5">
-        <div className="flex items-center gap-1.5 mb-1 px-1">
-          <BookOpen className="w-3 h-3 text-text-muted" />
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-            {t('studyPhase.topics')}
-          </span>
-        </div>
-        <div className="relative">
-          <div className="absolute left-[17px] top-2 bottom-2 w-px bg-surface-light/50" />
-          {allTopics.map(item => {
-            // Determine which phase this topic is "in"
-            const currentPhase = ['dominado', 'experto'].includes(item.mastery) ? 'consolidation'
-              : ['aprendiendo'].includes(item.mastery) ? 'deep'
-              : item.mastery === 'visto' ? 'deep'
-              : 'panorama'
-
-            return (
-              <StudyPhaseNode
-                key={item.topic.id}
-                topic={item.topic}
-                mastery={item.mastery}
-                isActive={activeTopic === item.topic.id}
-                onClick={onSelectTopic}
-                phase={currentPhase}
-              />
-            )
-          })}
-        </div>
       </div>
     </div>
   )

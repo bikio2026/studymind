@@ -229,7 +229,7 @@ RULES:
 - Required mix: at least 1 recall + 2 understand + 1 apply + 1 analyze.
 - Answers should be complete (3-5 sentences), explaining the reasoning.
 - Connections should refer to sections in the same document, indicating the specific relationship.
-- Generate 3-4 preReadingQuestions: questions to think about BEFORE studying this topic. They activate prior knowledge and direct attention. Examples: "Why do you think...?", "What would happen if...?", "How does this relate to...?"
+- Generate 5-7 preReadingQuestions: questions to think about BEFORE studying this topic. They activate prior knowledge and direct attention. Examples: "Why do you think...?", "What would happen if...?", "How does this relate to...?"
 - ${getLangInstruction(language)}`
 }
 
@@ -270,6 +270,64 @@ IMPORTANT:
 - If the answer is very short but conceptually correct, high score with feedback suggesting expansion.
 - If the answer is long but confused or incorrect, low score with clear feedback.
 - Don't be condescending. Be direct and useful.`
+}
+
+// --- Pre-reading question evaluation prompt ---
+
+export function buildPreReadingEvalPrompt(question, studentAnswer, topicSummary, language = 'es') {
+  return `A student answered a pre-reading reflection question BEFORE studying a topic. ${getLangInstruction(language)}
+
+TOPIC SUMMARY: ${topicSummary}
+
+PRE-READING QUESTION: ${question}
+
+STUDENT'S ANSWER: ${studentAnswer}
+
+Evaluate the student's pre-existing knowledge and provide guidance for their upcoming reading.
+
+Return ONLY valid JSON:
+{
+  "feedback": "Brief assessment of what the student already knows and what gaps exist (2-3 sentences)",
+  "lookForWhenReading": ["Specific aspect to pay attention to when reading", "Another key point to look for"],
+  "connections": ["Related concept or topic that might help understand this better"]
+}
+
+RULES:
+- This is NOT a quiz evaluation. The student hasn't read the material yet.
+- Be encouraging about what they already know, even if partial or wrong.
+- "lookForWhenReading": 2-4 concrete, specific things the student should focus on when they read the chapter. These should address gaps in their answer.
+- "connections": 1-2 related concepts from economics (or the subject) that could help bridge understanding.
+- Be direct and practical. Don't be condescending.
+- ${getLangInstruction(language)}`
+}
+
+// --- Tutor observation focus prompt ---
+
+export function buildTutorFocusPrompt(observation, topicsSummaries, language = 'es') {
+  return `A tutor has made the following observation about a student's difficulty. ${getLangInstruction(language)}
+
+TUTOR'S OBSERVATION: "${observation}"
+
+AVAILABLE TOPICS AND SUMMARIES:
+${topicsSummaries.map(t => `- "${t.title}": ${t.summary}`).join('\n')}
+
+Based on this observation, generate focused study material to address the student's specific difficulty.
+
+Return ONLY valid JSON:
+{
+  "questions": [
+    { "question": "Focused question addressing the difficulty", "hint": "Brief hint for the student" }
+  ],
+  "relevantTopics": ["Topic title 1", "Topic title 2"],
+  "miniGuide": "2-3 paragraph explanation that addresses the specific difficulty from an angle the student might understand better. Use analogies and simple language."
+}
+
+RULES:
+- Generate 3-5 questions that specifically target the observed difficulty.
+- Each question should probe a different aspect of the misunderstanding.
+- "relevantTopics": List the topic titles (from the available topics) that are most relevant to this difficulty.
+- "miniGuide": Write a clear, patient explanation addressing the exact confusion described by the tutor. Use analogies and everyday examples.
+- ${getLangInstruction(language)}`
 }
 
 // --- Translation prompt for on-demand translation ---

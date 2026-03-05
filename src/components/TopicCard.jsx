@@ -177,6 +177,8 @@ export default function TopicCard({ topic, documentId, bookPage, provider, langu
   const topicProgress = useProgressStore(s => s.progress[topic.id])
   const markStudied = useProgressStore(s => s.markStudied)
   const saveQuizScore = useProgressStore(s => s.saveQuizScore)
+  const saveQuizAnswer = useProgressStore(s => s.saveQuizAnswer)
+  const resetQuizAnswers = useProgressStore(s => s.resetQuizAnswers)
   const saveTopicTranslation = useStudyStore(s => s.saveTopicTranslation)
   const { streamRequest } = useLLMStream()
 
@@ -407,8 +409,8 @@ export default function TopicCard({ topic, documentId, bookPage, provider, langu
             const secret = import.meta.env.VITE_APP_SECRET || ''
             const endpoint = provider === 'groq' ? '/api/analyze-groq' : '/api/analyze-claude'
             const prompt = language === 'es'
-              ? `Dado el tema "${topic.sectionTitle}" con este resumen: "${topic.summary}"\n\nGenerá 3-4 preguntas previas a la lectura que activen el conocimiento previo del estudiante y dirijan su atención. Deben ser preguntas para PENSAR antes de estudiar, no quiz. Formato: JSON array de strings. Ejemplo: ["¿Por qué...?", "¿Qué pasaría si...?"]\nRespondé SOLO con el JSON array.`
-              : `Given the topic "${topic.sectionTitle}" with this summary: "${topic.summary}"\n\nGenerate 3-4 pre-reading questions that activate prior knowledge and direct attention. These are questions to THINK about before studying, not quiz questions. Format: JSON array of strings.\nRespond ONLY with the JSON array.`
+              ? `Dado el tema "${topic.sectionTitle}" con este resumen: "${topic.summary}"\n\nGenerá 5-7 preguntas previas a la lectura que activen el conocimiento previo del estudiante y dirijan su atención. Deben ser preguntas para PENSAR antes de estudiar, no quiz. Formato: JSON array de strings. Ejemplo: ["¿Por qué...?", "¿Qué pasaría si...?"]\nRespondé SOLO con el JSON array.`
+              : `Given the topic "${topic.sectionTitle}" with this summary: "${topic.summary}"\n\nGenerate 5-7 pre-reading questions that activate prior knowledge and direct attention. These are questions to THINK about before studying, not quiz questions. Format: JSON array of strings.\nRespond ONLY with the JSON array.`
             const res = await fetch(`${apiBase}${endpoint}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', ...(secret ? { 'x-api-secret': secret } : {}) },
@@ -548,6 +550,9 @@ export default function TopicCard({ topic, documentId, bookPage, provider, langu
             provider={provider}
             language={language}
             onComplete={(score) => saveQuizScore(documentId, topic.id, score)}
+            savedAnswers={topicProgress?.quizAnswers}
+            onSaveAnswer={(idx, data) => saveQuizAnswer(documentId, topic.id, idx, data)}
+            onResetAnswers={() => resetQuizAnswers(documentId, topic.id)}
           />
           <NextTopicSuggestion
             topics={topics}

@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { X, Settings, GraduationCap, ToggleLeft, ToggleRight, Save, Loader2 } from 'lucide-react'
+import { useRef } from 'react'
+import { X, Settings, GraduationCap, ToggleLeft, ToggleRight } from 'lucide-react'
 import { useFeatureStore } from '../stores/featureStore'
 import { useTranslation } from '../lib/useTranslation'
 
@@ -22,28 +22,13 @@ const DEPTH_OPTIONS = [
   { value: 'completo', labelKey: 'depth.completo' },
 ]
 
-export default function FeatureSettings({ open, onClose }) {
+export default function FeatureSettings({ open, onClose, onOpenTutor }) {
   const { t } = useTranslation()
   const features = useFeatureStore(s => s.features)
-  const tutorNotes = useFeatureStore(s => s.tutorNotes)
   const toggle = useFeatureStore(s => s.toggle)
   const setFeature = useFeatureStore(s => s.setFeature)
-  const saveTutorNotes = useFeatureStore(s => s.saveTutorNotes)
-
-  const [localNotes, setLocalNotes] = useState(tutorNotes)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const observationsCount = useFeatureStore(s => s.tutorObservations?.length || 0)
   const backdropRef = useRef(null)
-
-  useEffect(() => { setLocalNotes(tutorNotes) }, [tutorNotes])
-
-  const handleSaveNotes = async () => {
-    setSaving(true)
-    await saveTutorNotes(localNotes)
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
 
   if (!open) return null
 
@@ -129,35 +114,29 @@ export default function FeatureSettings({ open, onClose }) {
             </div>
           </div>
 
-          {/* Tutor Notes */}
+          {/* Tutor Observations link */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <GraduationCap className="w-4 h-4 text-accent" />
-              <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-                {t('features.tutorNotes')}
-              </h3>
-            </div>
-            <p className="text-[10px] text-text-muted mb-2">{t('features.tutorNotesDesc')}</p>
-            <textarea
-              value={localNotes}
-              onChange={(e) => setLocalNotes(e.target.value)}
-              placeholder={t('features.tutorNotesPlaceholder')}
-              rows={4}
-              className="w-full text-sm bg-surface-light/20 border border-surface-light/30 rounded-lg px-3 py-2
-                text-text placeholder-text-muted/50 resize-none focus:outline-none focus:border-accent/50"
-            />
-            <div className="flex justify-end mt-2">
-              <button
-                onClick={handleSaveNotes}
-                disabled={saving || localNotes === tutorNotes}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                  bg-accent/10 text-accent hover:bg-accent/15 border border-accent/20
-                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                {saved ? t('features.saved') : t('features.saveNotes')}
-              </button>
-            </div>
+            <button
+              onClick={() => { onClose(); onOpenTutor?.() }}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl
+                bg-accent/5 border border-accent/15 hover:bg-accent/10 transition-colors group"
+            >
+              <div className="flex items-center gap-2.5">
+                <GraduationCap className="w-5 h-5 text-accent" />
+                <div className="text-left">
+                  <p className="text-sm font-medium text-accent">{t('tutor.title')}</p>
+                  <p className="text-[10px] text-text-muted">{t('tutor.settingsDesc')}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {observationsCount > 0 && (
+                  <span className="text-[10px] bg-accent/15 text-accent px-1.5 py-0.5 rounded-full">
+                    {observationsCount}
+                  </span>
+                )}
+                <span className="text-accent/50 group-hover:text-accent transition-colors">→</span>
+              </div>
+            </button>
           </div>
         </div>
       </div>

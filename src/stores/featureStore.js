@@ -24,16 +24,31 @@ function saveFeatures(documentId, features) {
 export const useFeatureStore = create((set, get) => ({
   features: { ...DEFAULTS },
   tutorNotes: '',
+  tutorObservations: [],
   documentId: null,
 
-  // Load features + tutor notes for a document
+  // Load features + tutor notes/observations for a document
   load: async (documentId) => {
     const features = loadFeatures(documentId)
     let tutorNotes = ''
+    let tutorObservations = []
     try {
-      tutorNotes = await db.getTutorNotes(documentId) || ''
+      const raw = await db.getTutorNotes(documentId)
+      if (raw) {
+        // Try to parse as JSON (new format: observations array)
+        try {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed)) {
+            tutorObservations = parsed
+          } else {
+            tutorNotes = raw // legacy plain text
+          }
+        } catch {
+          tutorNotes = raw // legacy plain text
+        }
+      }
     } catch { /* no tutor notes yet */ }
-    set({ features, tutorNotes, documentId })
+    set({ features, tutorNotes, tutorObservations, documentId })
   },
 
   // Toggle a boolean feature
@@ -53,12 +68,25 @@ export const useFeatureStore = create((set, get) => ({
     if (documentId) saveFeatures(documentId, updated)
   },
 
-  // Save tutor notes
+  // Save tutor notes (legacy)
   saveTutorNotes: async (notes) => {
     const { documentId } = get()
     set({ tutorNotes: notes })
     if (documentId) {
       try { await db.saveTutorNotes(documentId, notes) } catch (e) { console.error('[FeatureStore] Save tutor notes error:', e) }
+    }
+  },
+
+  // Save tutor observations (new interactive format)
+  saveObservations: async (observations) => {
+    const { documentId } = get()
+    set({ tutorObservations: observations })
+    if (documentId) {
+      try {
+        await db.saveTutorNotes(documentId, JSON.stringify(observations))
+      } catch (e) {
+        console.error('[FeatureStore] Save observations error:', e)
+      }
     }
   },
 
