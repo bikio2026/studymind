@@ -1,106 +1,221 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import TopicCard from './TopicCard'
+import BookIntro from './BookIntro'
 import RelevanceFilter from './RelevanceFilter'
 import DocumentOutline from './DocumentOutline'
 import LearningPath from './LearningPath'
+import ConnectionGraph from './ConnectionGraph'
 import ProgressDashboard from './ProgressDashboard'
 import BookCoverageBar from './BookCoverageBar'
-import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3, List, Route, PlusCircle } from 'lucide-react'
+import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3, List, Route, Network, PlusCircle, FileDown, Paperclip, Menu, X, BookOpen } from 'lucide-react'
 import { useTranslation } from '../lib/useTranslation'
 
-export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming, bookData, onExpandCoverage, onNavigateToDocument, language }) {
+export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming, bookData, onExpandCoverage, onDownloadPDF, pdfAvailable, onLinkPDF, onNavigateToDocument, language, onHeaderVisibilityChange }) {
   const { t } = useTranslation()
   const [activeTopic, setActiveTopic] = useState(null)
   const [filter, setFilter] = useState('all')
   const [showDashboard, setShowDashboard] = useState(false)
   const [sidebarTab, setSidebarTab] = useState('outline') // 'outline' | 'path'
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarHint, setSidebarHint] = useState(() => {
+    if (typeof localStorage === 'undefined') return false
+    return !localStorage.getItem('studymind-sidebar-used')
+  })
   const provider = typeof localStorage !== 'undefined'
     ? (localStorage.getItem('studymind-llm-provider') || 'claude')
     : 'claude'
 
-  // Set first topic as active, or fallback if activeTopic is invalid (e.g. connection link to non-existent topic)
+  // Auto-hide header on mobile scroll down
+  const scrollRef = useRef(null)
+  const lastScrollY = useRef(0)
   useEffect(() => {
-    if (topics.length === 0) return
-    if (!activeTopic || !topics.find(t => t.id === activeTopic)) {
-      setActiveTopic(topics[0].id)
+    if (!onHeaderVisibilityChange) return
+    const handleScroll = () => {
+      if (window.innerWidth >= 768) {
+        // Desktop: use scrollRef (inner scroll container)
+        const el = scrollRef.current
+        if (!el) return
+        onHeaderVisibilityChange(false)
+        lastScrollY.current = el.scrollTop
+        return
+      }
+      // Mobile: use window scroll (single page scroll)
+      const y = window.scrollY
+      if (y > lastScrollY.current + 15 && y > 60) {
+        onHeaderVisibilityChange(true)
+      } else if (y < lastScrollY.current - 10) {
+        onHeaderVisibilityChange(false)
+      }
+      lastScrollY.current = y
     }
-  }, [topics, activeTopic])
+    // Listen to both to handle rotation between mobile/desktop
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    const el = scrollRef.current
+    if (el) el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      if (el) el.removeEventListener('scroll', handleScroll)
+    }
+  }, [onHeaderVisibilityChange])
+
+  // Reset scroll position when active topic changes
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+    window.scrollTo(0, 0) // mobile uses window scroll
+  }, [activeTopic])
+
+  // Sort topics by their position in the book structure
+  const sortedTopics = useMemo(() => {
+    if (!topics.length || !structure?.sections?.length) return topics
+    const sectionOrder = {}
+    structure.sections.forEach((s, i) => { sectionOrder[s.id] = i })
+    return [...topics].sort((a, b) => {
+      return (sectionOrder[a.id] ?? 999) - (sectionOrder[b.id] ?? 999)
+    })
+  }, [topics, structure])
+
+  const INTRO_ID = '__intro__'
+  const isIntro = activeTopic === INTRO_ID
+
+  // Set intro as initial view, or fallback if activeTopic is invalid
+  useEffect(() => {
+    if (sortedTopics.length === 0) return
+    if (!activeTopic) {
+      setActiveTopic(INTRO_ID)
+    } else if (activeTopic !== INTRO_ID && !sortedTopics.find(t => t.id === activeTopic)) {
+      setActiveTopic(INTRO_ID)
+    }
+  }, [sortedTopics, activeTopic])
 
   const filteredTopics = filter === 'all'
-    ? topics
-    : topics.filter(t => t.relevance === filter)
+    ? sortedTopics
+    : sortedTopics.filter(t => t.relevance === filter)
 
-  const currentTopic = topics.find(t => t.id === activeTopic)
+  const currentTopic = sortedTopics.find(t => t.id === activeTopic)
 
-  const currentIdx = filteredTopics.findIndex(t => t.id === activeTopic)
-  const prevTopic = currentIdx > 0 ? filteredTopics[currentIdx - 1] : null
-  const nextTopic = currentIdx < filteredTopics.length - 1 ? filteredTopics[currentIdx + 1] : null
+  // Navigation: intro is before the first topic
+  const currentIdx = isIntro ? -1 : filteredTopics.findIndex(t => t.id === activeTopic)
+  const prevTopic = isIntro ? null : (currentIdx <= 0 ? { id: INTRO_ID } : filteredTopics[currentIdx - 1])
+  const nextTopic = isIntro ? (filteredTopics[0] || null) : (currentIdx < filteredTopics.length - 1 ? filteredTopics[currentIdx + 1] : null)
 
   const totalSections = structure.sections.filter(s => s.level <= 2).length
   const isIncomplete = documentStatus === 'incomplete'
 
-  return (
-    <div className="flex gap-4 h-[calc(100vh-120px)]">
-      {/* Sidebar */}
-      <div className="w-72 shrink-0 flex flex-col max-h-[calc(100vh-120px)]">
-        {/* Sidebar tabs */}
-        {topics.length > 0 && (
-          <div className="flex mb-2 bg-surface-alt rounded-lg p-0.5">
-            <button
-              onClick={() => setSidebarTab('outline')}
-              className={`flex-1 flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
-                sidebarTab === 'outline'
-                  ? 'bg-surface-light text-text font-medium'
-                  : 'text-text-muted hover:text-text-dim'
-              }`}
-            >
-              <List className="w-3 h-3" />
-              {t('guide.outline')}
-            </button>
-            <button
-              onClick={() => setSidebarTab('path')}
-              className={`flex-1 flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
-                sidebarTab === 'path'
-                  ? 'bg-surface-light text-text font-medium'
-                  : 'text-text-muted hover:text-text-dim'
-              }`}
-            >
-              <Route className="w-3 h-3" />
-              {t('guide.path')}
-            </button>
-          </div>
-        )}
+  // Close sidebar overlay when a topic is selected (mobile)
+  const handleSelectTopic = (topicId) => {
+    setActiveTopic(topicId)
+    setSidebarOpen(false)
+  }
 
-        {/* Sidebar content */}
-        {sidebarTab === 'outline' ? (
-          <DocumentOutline
-            structure={structure}
-            topics={topics}
-            activeTopic={activeTopic}
-            onSelectTopic={setActiveTopic}
-            documentId={documentId}
-            bookStructure={bookData?.book?.structure}
-            processedSectionIds={bookData?.processedSectionIds}
-          />
-        ) : (
-          <div className="bg-surface-alt rounded-xl p-4 overflow-y-auto flex-1">
-            <LearningPath
-              topics={topics}
-              activeTopic={activeTopic}
-              onSelectTopic={setActiveTopic}
-            />
+  return (
+    <div className="md:flex md:gap-4 flex-1 min-h-0 relative overflow-x-clip md:overflow-x-hidden">
+      {/* Sidebar — full screen opaque on mobile, side panel on desktop */}
+      <div className={`
+        flex flex-col shrink-0
+        md:w-60 lg:w-72 md:max-h-full
+        ${sidebarOpen
+          ? 'fixed inset-0 z-50 bg-surface md:relative md:inset-auto md:z-auto md:bg-transparent'
+          : 'max-md:hidden'
+        }
+      `}>
+        {/* Mobile header bar */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-surface-light md:hidden shrink-0">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-accent" />
+            <span className="text-sm font-semibold text-text">{t('guide.outline')}</span>
           </div>
-        )}
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="p-1.5 rounded-lg hover:bg-surface-alt text-text-muted hover:text-text transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Sidebar inner container */}
+        <div className="flex-1 overflow-y-auto flex flex-col px-4 pt-3 md:px-0 md:pt-0">
+          {/* Sidebar tabs */}
+          {sortedTopics.length > 0 && (
+            <div className="flex mb-2 bg-surface-alt rounded-lg p-0.5 shrink-0 mx-4 mt-4 md:mx-0 md:mt-0">
+              <button
+                onClick={() => setSidebarTab('outline')}
+                className={`flex-1 flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
+                  sidebarTab === 'outline'
+                    ? 'bg-surface-light text-text font-medium'
+                    : 'text-text-muted hover:text-text-dim'
+                }`}
+              >
+                <List className="w-3 h-3" />
+                {t('guide.outline')}
+              </button>
+              <button
+                onClick={() => setSidebarTab('path')}
+                className={`flex-1 flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
+                  sidebarTab === 'path'
+                    ? 'bg-surface-light text-text font-medium'
+                    : 'text-text-muted hover:text-text-dim'
+                }`}
+              >
+                <Route className="w-3 h-3" />
+                {t('guide.path')}
+              </button>
+              <button
+                onClick={() => setSidebarTab('graph')}
+                className={`flex-1 flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
+                  sidebarTab === 'graph'
+                    ? 'bg-surface-light text-text font-medium'
+                    : 'text-text-muted hover:text-text-dim'
+                }`}
+              >
+                <Network className="w-3 h-3" />
+                {t('guide.graph')}
+              </button>
+            </div>
+          )}
+
+          {/* Sidebar content */}
+          <div className="flex-1 overflow-y-auto md:overflow-visible">
+            {sidebarTab === 'outline' ? (
+              <DocumentOutline
+                structure={structure}
+                topics={sortedTopics}
+                activeTopic={activeTopic}
+                onSelectTopic={handleSelectTopic}
+                documentId={documentId}
+                bookStructure={bookData?.book?.structure}
+                processedSectionIds={bookData?.processedSectionIds}
+              />
+            ) : sidebarTab === 'path' ? (
+              <div className="bg-surface-alt rounded-xl p-4 overflow-y-auto flex-1">
+                <LearningPath
+                  topics={sortedTopics}
+                  activeTopic={activeTopic}
+                  onSelectTopic={handleSelectTopic}
+                />
+              </div>
+            ) : (
+              <div className="bg-surface-alt rounded-xl p-3 flex-1 min-h-[300px]">
+                <ConnectionGraph
+                  topics={sortedTopics}
+                  sections={structure.sections}
+                  activeTopic={activeTopic}
+                  onSelectTopic={(id) => { handleSelectTopic(id); setSidebarTab('outline') }}
+                  allBookTopics={bookData?.bookTopics}
+                />
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto pr-2">
+      <div ref={scrollRef} className="md:flex-1 md:overflow-y-auto overflow-x-clip md:overflow-x-hidden pr-2">
         {/* Incomplete banner */}
         {isIncomplete && (
           <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/5 border border-amber-500/15 animate-fadeIn">
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
             <span className="text-sm text-text-dim flex-1">
-              {t('guide.incomplete', { current: topics.length, total: totalSections })}
+              {t('guide.incomplete', { current: sortedTopics.length, total: totalSections })}
             </span>
             {onResume && (
               <button
@@ -135,30 +250,75 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
               variant="expanded"
               totalPages={bookData.book.totalPages}
             />
-            {onExpandCoverage && bookData.processedSectionIds?.size < (bookData.book.structure?.sections?.filter(s => (s.level || 1) <= 2).length || 0) && (
-              <button
-                onClick={onExpandCoverage}
-                className="mt-2.5 flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent/80
-                  px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/15 border border-accent/20
-                  transition-colors"
-              >
-                <PlusCircle className="w-3.5 h-3.5" />
-                {t('guide.expandCoverage')}
-              </button>
-            )}
+            <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+              {onExpandCoverage && (() => {
+                const allSections = (bookData.book.structure?.sections || []).filter(s => (s.level || 1) <= 2)
+                const parentIds = new Set(allSections.filter(s => s.parentId).map(s => String(s.parentId)))
+                const leafCount = allSections.filter(s => !parentIds.has(String(s.id))).length
+                return bookData.processedSectionIds?.size < leafCount
+              })() && (
+                <button
+                  onClick={onExpandCoverage}
+                  className="flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent/80
+                    px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/15 border border-accent/20
+                    transition-colors"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  {t('guide.expandCoverage')}
+                </button>
+              )}
+              {pdfAvailable && onDownloadPDF && (
+                <button
+                  onClick={onDownloadPDF}
+                  className="flex items-center gap-1.5 text-xs font-medium text-red-400 hover:text-red-300
+                    px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/15 border border-red-500/20
+                    transition-colors"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  {t('pdf.download')}
+                </button>
+              )}
+              {!pdfAvailable && onLinkPDF && (
+                <button
+                  onClick={onLinkPDF}
+                  className="flex items-center gap-1.5 text-xs font-medium text-text-muted hover:text-text
+                    px-3 py-1.5 rounded-lg bg-surface-light/30 hover:bg-surface-light/50 border border-surface-light/30
+                    transition-colors"
+                >
+                  <Paperclip className="w-3.5 h-3.5" />
+                  {t('pdf.link')}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
         {/* Progress Dashboard (collapsible) */}
-        {showDashboard && topics.length > 0 && (
-          <ProgressDashboard topics={topics} />
+        {showDashboard && sortedTopics.length > 0 && (
+          <ProgressDashboard topics={sortedTopics} />
         )}
 
         {/* Toolbar */}
-        <div className="flex items-center justify-between mb-4 sticky top-0 bg-surface/95 backdrop-blur-sm py-3 z-10 -mt-1">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 mb-4 sticky top-0 bg-surface/95 backdrop-blur-sm py-3 z-10 -mt-1">
           <div className="flex items-center gap-2">
+            {/* Mobile sidebar toggle */}
+            <button
+              onClick={() => {
+                setSidebarOpen(true)
+                if (sidebarHint) {
+                  setSidebarHint(false)
+                  localStorage.setItem('studymind-sidebar-used', '1')
+                }
+              }}
+              className={`md:hidden p-1.5 rounded-lg hover:bg-surface-alt text-text-muted hover:text-text transition-colors ${
+                sidebarHint ? 'animate-pulse ring-2 ring-accent/40 text-accent' : ''
+              }`}
+              title={t('guide.openSidebar')}
+            >
+              <Menu className="w-4 h-4" />
+            </button>
             <RelevanceFilter active={filter} onChange={setFilter} />
-            {topics.length > 0 && (
+            {sortedTopics.length > 0 && (
               <button
                 onClick={() => setShowDashboard(v => !v)}
                 className={`p-1.5 rounded-lg transition-colors ${
@@ -181,7 +341,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
               <ArrowLeft className="w-4 h-4" />
             </button>
             <span className="text-xs text-text-muted min-w-[60px] text-center">
-              {currentIdx >= 0 ? currentIdx + 1 : '—'} / {filteredTopics.length}
+              {isIntro ? t('guide.intro') : currentIdx >= 0 ? `${currentIdx + 1} / ${filteredTopics.length}` : '—'}
             </span>
             <button
               onClick={() => nextTopic && setActiveTopic(nextTopic.id)}
@@ -193,8 +353,17 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
           </div>
         </div>
 
-        {/* Topic card */}
-        {currentTopic ? (
+        {/* Content: Intro or Topic card */}
+        {isIntro ? (
+          <BookIntro
+            structure={structure}
+            topics={sortedTopics}
+            documentId={documentId}
+            language={language}
+            provider={provider}
+            onNavigateToTopic={setActiveTopic}
+          />
+        ) : currentTopic ? (
           <TopicCard
             key={currentTopic.id}
             topic={currentTopic}
@@ -203,7 +372,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
             provider={provider}
             language={language}
             sections={structure.sections}
-            topics={topics}
+            topics={sortedTopics}
             onNavigateToTopic={setActiveTopic}
             allBookTopics={bookData?.bookTopics}
             onNavigateToDocument={onNavigateToDocument}

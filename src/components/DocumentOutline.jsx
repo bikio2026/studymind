@@ -151,6 +151,9 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
       }))
   }, [hasBookView, bookStructure, processedSectionIds, topics])
 
+  // Only show book sections panel when there are sections from OTHER imports
+  const hasOtherImportSections = bookSections.some(s => s.isProcessed && !s.isInCurrentDoc)
+
   // Group topics by their root chapter ancestor
   const { groups, isSingleGroup } = useMemo(() => {
     // Use string keys for safe matching (IDB may store string IDs)
@@ -192,24 +195,40 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
   const masteryPct = stats.total > 0 ? Math.round((masteredCount / stats.total) * 100) : 0
 
   return (
-    <div className="w-72 shrink-0 bg-surface-alt rounded-xl p-4 overflow-y-auto max-h-[calc(100vh-120px)]">
+    <div className="w-full bg-surface-alt rounded-xl p-4 overflow-y-auto flex-1">
       {/* Document title + book badge */}
       <div className="flex items-center gap-2 mb-3 pb-3 border-b border-surface-light">
         <BookOpen className="w-4 h-4 text-accent shrink-0" />
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold truncate" title={hasBookView ? bookStructure.title : structure.title}>
+          <h2 className="text-sm font-semibold line-clamp-2" title={hasBookView ? bookStructure.title : structure.title}>
             {hasBookView ? bookStructure.title : structure.title}
           </h2>
-          {hasBookView && (
+          {hasOtherImportSections && (
             <p className="text-[10px] text-text-muted mt-0.5">
-              {t('outline.sectionsCount', { n: bookSections.filter(s => s.isProcessed).length, total: bookSections.length })}
+              {t('outline.sectionsCount', { n: bookSections.filter(s => s.isProcessed || s.isInCurrentDoc).length, total: bookSections.filter(s => s.section.level >= 2).length })}
             </p>
           )}
         </div>
       </div>
 
-      {/* Book-wide section view (when book data available) */}
-      {hasBookView && (
+      {/* Introduction item */}
+      <button
+        onClick={() => onSelectTopic('__intro__')}
+        className={`w-full text-left px-3 py-2.5 rounded-lg transition-all mb-2 ${
+          activeTopic === '__intro__'
+            ? 'bg-accent/15 text-accent'
+            : 'hover:bg-surface-light/50 text-text-dim hover:text-text'
+        }`}
+      >
+        <div className="flex items-center gap-2.5">
+          <BookOpen className="w-3.5 h-3.5 shrink-0" />
+          <span className="text-[13px] font-medium">{t('guide.intro')}</span>
+          {activeTopic === '__intro__' && <ChevronRight className="w-3 h-3 shrink-0 ml-auto text-accent" />}
+        </div>
+      </button>
+
+      {/* Book-wide section view (only when there are sections from other imports) */}
+      {hasOtherImportSections && (
         <div className="mb-3 pb-3 border-b border-surface-light/50">
           <p className="text-[10px] text-text-dim uppercase tracking-wider font-medium mb-2 px-2">
             {t('outline.bookSections')}
@@ -258,7 +277,7 @@ export default function DocumentOutline({ structure, topics, activeTopic, onSele
 
       {/* Topic navigation (current document topics) */}
       <nav className="space-y-0.5">
-        {hasBookView && topics.length > 0 && (
+        {hasOtherImportSections && topics.length > 0 && (
           <p className="text-[10px] text-text-dim uppercase tracking-wider font-medium mb-2 px-2">
             {t('outline.thisImport')}
           </p>

@@ -7,6 +7,8 @@ import ConnectionLink from './ConnectionLink'
 import SourceTextViewer from './SourceTextViewer'
 import NextTopicSuggestion from './NextTopicSuggestion'
 import { enrichConnections } from '../lib/connectionParser'
+import { getGraphForTopic } from '../lib/graphCatalog'
+import EconChart from './EconChart'
 import { useProgressStore } from '../stores/progressStore'
 import { useStudyStore } from '../stores/studyStore'
 import { useLLMStream } from '../hooks/useLLMStream'
@@ -310,7 +312,7 @@ export default function TopicCard({ topic, documentId, bookPage, provider, langu
       )}
 
       {/* Depth Level Selector + Language Toggle */}
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex items-center gap-1.5">
           <Layers className="w-3.5 h-3.5 text-text-muted mr-1" />
           {Object.entries(DEPTH_LEVELS).map(([key, level]) => (
@@ -370,6 +372,13 @@ export default function TopicCard({ topic, documentId, bookPage, provider, langu
       <div className="mb-4">
         <p className="text-text leading-relaxed text-[15px]">{displayTopic.summary}</p>
       </div>
+
+      {/* Inline economics graph (if available for this topic) */}
+      {depth !== 'resumen' && getGraphForTopic(topic) && (
+        <div className="mb-4">
+          <EconChart config={getGraphForTopic(topic)} />
+        </div>
+      )}
 
       {/* Source Text Viewer */}
       {sections?.length > 0 && (

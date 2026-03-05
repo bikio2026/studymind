@@ -24,3 +24,11 @@ data/
 *.njsproj
 *.sln
 *.sw?
+
+# Claude / Vercel local
+.claude/
+.vercel/
+
+# PDFs and plans
+*.pdf
+PLAN-*.md

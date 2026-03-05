@@ -1,6 +1,8 @@
 import http from 'node:http'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 
 const require = createRequire(import.meta.url)
 const { initDB, handleAction } = require('../lib/database.cjs')
@@ -96,6 +98,13 @@ function readBody(req) {
     req.on('end', () => resolve(body))
   })
 }
+
+const jsonHeaders = { 'Content-Type': 'application/json' }
+
+// PDF local storage directory (dev only)
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const pdfsDir = join(__dirname, '..', 'data', 'pdfs')
+if (!existsSync(pdfsDir)) mkdirSync(pdfsDir, { recursive: true })
 
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -347,6 +356,71 @@ const server = http.createServer(async (req, res) => {
       console.error('[DB]', err.message)
       res.writeHead(500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ ok: false, error: err.message }))
+    }
+    return
+  }
+
+  // --- PDF Storage (local dev — file system) ---
+
+  // PDF Upload: save binary to data/pdfs/{hash}.pdf
+  // In dev, Vercel Blob client calls this as the handleUploadUrl
+  if (req.url === '/api/pdf-upload' && req.method === 'POST') {
+    const body = await readBody(req)
+    try {
+      const payload = JSON.parse(body)
+      // Vercel Blob client sends a specific payload structure
+      // In dev, we just need the pathname to extract the hash
+      const pathname = payload?.payload?.pathname || payload?.pathname || ''
+      const hashMatch = pathname.match(/pdfs\/([a-f0-9]+)\.pdf/)
+
+      if (!hashMatch) {
+        // Return a fake "upload URL" for the client to use
+        // In dev, the actual file will come via a separate PUT
+        res.writeHead(200, jsonHeaders)
+        res.end(JSON.stringify({
+          type: 'blob.generate-client-token',
+          clientToken: 'dev-local-token',
+        }))
+        return
+      }
+
+      res.writeHead(200, jsonHeaders)
+      res.end(JSON.stringify({ ok: true }))
+    } catch (e) {
+      // For dev: accept raw binary upload via PUT from the client
+      res.writeHead(200, jsonHeaders)
+      res.end(JSON.stringify({ type: 'blob.generate-client-token', clientToken: 'dev-local-token' }))
+    }
+    return
+  }
+
+  // PDF Download: serve from data/pdfs/{hash}.pdf
+  if (req.url?.startsWith('/api/pdf-download') && req.method === 'GET') {
+    const urlObj = new URL(req.url, `http://localhost:${PORT}`)
+    const hash = urlObj.searchParams.get('hash')
+    if (!hash) {
+      res.writeHead(400, jsonHeaders)
+      res.end(JSON.stringify({ error: 'Missing hash' }))
+      return
+    }
+
+    const filePath = join(pdfsDir, `${hash}.pdf`)
+    if (existsSync(filePath)) {
+      const data = readFileSync(filePath)
+      res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment' })
+      res.end(data)
+    } else {
+      // Check if book has a blob URL (production)
+      try {
+        const book = await handleAction('getBookByHash', { hash })
+        if (book?.pdfBlobUrl) {
+          res.writeHead(302, { Location: book.pdfBlobUrl })
+          res.end()
+          return
+        }
+      } catch { /* ok */ }
+      res.writeHead(404, jsonHeaders)
+      res.end(JSON.stringify({ error: 'PDF not found' }))
     }
     return
   }

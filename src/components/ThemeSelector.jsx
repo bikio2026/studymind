@@ -10,12 +10,15 @@ export default function ThemeSelector() {
   const currentTheme = useThemeStore(s => s.theme)
   const setTheme = useThemeStore(s => s.setTheme)
   const dropdownRef = useRef(null)
+  const buttonRef = useRef(null)
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 })
 
   // Close on click outside
   useEffect(() => {
     if (!open) return
     const handler = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target) &&
+          buttonRef.current && !buttonRef.current.contains(e.target)) {
         setOpen(false)
       }
     }
@@ -23,12 +26,24 @@ export default function ThemeSelector() {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  const handleToggle = () => {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setDropdownPos({
+        top: rect.bottom + 6,
+        right: window.innerWidth - rect.right,
+      })
+    }
+    setOpen(!open)
+  }
+
   const current = THEMES[currentTheme]
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative">
       <button
-        onClick={() => setOpen(!open)}
+        ref={buttonRef}
+        onClick={handleToggle}
         className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text px-2.5 py-1.5 rounded-lg
           hover:bg-surface-alt transition-colors border border-transparent hover:border-surface-light"
         title={t('theme.changeTheme')}
@@ -43,7 +58,11 @@ export default function ThemeSelector() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 z-50 bg-surface-alt border border-surface-light rounded-xl shadow-xl py-1.5 w-56 max-h-[70vh] overflow-y-auto animate-fadeIn">
+        <div
+          ref={dropdownRef}
+          className="fixed z-50 bg-surface-alt border border-surface-light rounded-xl shadow-xl py-1.5 w-56 max-h-[70vh] overflow-y-auto animate-fadeIn"
+          style={{ top: dropdownPos.top, right: dropdownPos.right }}
+        >
           {THEME_IDS.map(id => {
             const theme = THEMES[id]
             const isActive = id === currentTheme

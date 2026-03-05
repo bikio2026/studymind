@@ -33,6 +33,11 @@ export const db = {
   saveDocument: (doc) => call('saveDocument', { doc }),
   findByContentHash: (hash) => call('findByContentHash', { hash }),
   deleteDocument: (id) => call('deleteDocument', { id }),
+  softDeleteDocument: (id) => call('softDeleteDocument', { id }),
+  restoreDocument: (id) => call('restoreDocument', { id }),
+  hardDeleteDocument: (id) => call('hardDeleteDocument', { id }),
+  getTrashedDocuments: () => call('getTrashedDocuments'),
+  cleanupTrash: (maxAgeMs) => call('cleanupTrash', { maxAgeMs }),
 
   // Structures
   getStructure: (documentId) => call('getStructure', { documentId }),
@@ -61,6 +66,8 @@ export const db = {
   getBook: (id) => call('getBook', { id }),
   saveBook: (book) => call('saveBook', { book }),
   updateBookStructure: (bookId, structure) => call('updateBookStructure', { bookId, structure }),
+  updateBookContentHash: (bookId, newHash) => call('updateBookContentHash', { bookId, newHash }),
   getBookDocuments: (bookId) => call('getBookDocuments', { bookId }),
   getBookTopics: (bookId) => call('getBookTopics', { bookId }),
+  updateBookBlobUrl: (contentHash, blobUrl) => call('updateBookBlobUrl', { contentHash, blobUrl }),
 }

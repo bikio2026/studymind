@@ -32,6 +32,16 @@ export const translations = {
     'library.incomplete': 'Incompleto',
     'library.processing': 'Procesando',
     'library.book': 'Libro',
+    'library.trash': 'Papelera',
+    'library.trashEmpty': 'La papelera está vacía',
+    'library.restore': 'Restaurar',
+    'library.permanentDelete': 'Eliminar definitivamente',
+    'library.emptyTrash': 'Vaciar papelera',
+    'library.emptyTrashConfirm': '¿Eliminar definitivamente {n} documento(s)?',
+    'library.expiresIn': 'Expira en {n} día(s)',
+    'library.expiresToday': 'Expira hoy',
+    'library.deletedAt': 'Eliminado {date}',
+    'library.movedToTrash': 'Movido a la papelera',
 
     // Upload
     'upload.title': 'Subí tu primer PDF',
@@ -106,7 +116,7 @@ export const translations = {
     'pageRange.pages': '{n} páginas',
     'pageRange.pagesOfTotal': '{n} de {total} páginas',
     'pageRange.process': 'Procesar {n} pág{s}.',
-    'pageRange.clickPending': 'Hacé click en una sección pendiente para seleccionar su rango.',
+    'pageRange.clickPending': 'Hacé click en las secciones pendientes para seleccionarlas.',
     'pageRange.fastEconomical': 'Rápido y económico',
     'pageRange.higherQuality': 'Mayor calidad',
     'pageRange.fastFreeTier': 'Rápido, tier gratuito',
@@ -115,6 +125,10 @@ export const translations = {
     // Study guide
     'guide.outline': 'Índice',
     'guide.path': 'Ruta',
+    'guide.graph': 'Grafo',
+    'guide.intro': 'Introducción',
+    'guide.openSidebar': 'Abrir índice',
+    'guide.closeSidebar': 'Cerrar índice',
     'guide.incomplete': 'Documento incompleto: {current} de {total} temas generados',
     'guide.resume': 'Continuar procesando',
     'guide.expandCoverage': 'Ampliar cobertura',
@@ -123,6 +137,21 @@ export const translations = {
     'guide.viewAll': 'Ver todos',
     'guide.selectTopic': 'Seleccioná un tema del panel lateral',
     'guide.backToLibrary': 'Volver a biblioteca',
+
+    // Connection graph
+    'graph.noConnections': 'No hay conexiones entre temas para visualizar',
+    'graph.topics': 'temas',
+    'relevance.core': 'Central',
+    'relevance.supporting': 'Soporte',
+    'relevance.detail': 'Detalle',
+
+    // Book intro
+    'intro.untitled': 'Sin título',
+    'intro.pages': 'páginas',
+    'intro.topics': 'temas',
+    'intro.overview': 'Resumen general',
+    'intro.generateSummary': 'Generar introducción',
+    'intro.tableOfContents': 'Tabla de contenidos',
 
     // Topic card
     'topic.coreConcept': 'Concepto Central',
@@ -213,6 +242,22 @@ export const translations = {
     'coverage.processed': 'Procesada',
     'coverage.pending': 'Pendiente',
     'coverage.clickToProcess': 'Click para procesar',
+    'coverage.clickToSelect': 'Click para seleccionar',
+    'coverage.clickToDeselect': 'Click para deseleccionar',
+    'coverage.selectAllPending': 'Seleccionar todas las pendientes',
+    'coverage.clearSelection': 'Limpiar selección',
+    'coverage.sectionsSelected': '{n} secciones seleccionadas',
+    'coverage.includesGap': 'El rango incluye secciones intermedias no seleccionadas',
+
+    // PDF storage
+    'pdf.saveToServer': 'Guardar PDF en el servidor',
+    'pdf.saveToServerNote': 'Accedé al PDF desde otros dispositivos',
+    'pdf.download': 'Descargar PDF',
+    'pdf.link': 'Vincular PDF',
+    'pdf.linkSuccess': 'PDF vinculado correctamente',
+    'pdf.linkMismatch': 'El PDF no corresponde a este libro',
+    'pdf.downloading': 'Descargando...',
+    'pdf.autoLoaded': 'PDF cargado automáticamente',
 
     // Progress dashboard
     'progress.title': 'Progreso del documento',
@@ -302,6 +347,16 @@ export const translations = {
     'library.incomplete': 'Incomplete',
     'library.processing': 'Processing',
     'library.book': 'Book',
+    'library.trash': 'Trash',
+    'library.trashEmpty': 'Trash is empty',
+    'library.restore': 'Restore',
+    'library.permanentDelete': 'Delete permanently',
+    'library.emptyTrash': 'Empty trash',
+    'library.emptyTrashConfirm': 'Permanently delete {n} document(s)?',
+    'library.expiresIn': 'Expires in {n} day(s)',
+    'library.expiresToday': 'Expires today',
+    'library.deletedAt': 'Deleted {date}',
+    'library.movedToTrash': 'Moved to trash',
 
     // Upload
     'upload.title': 'Upload your first PDF',
@@ -376,7 +431,7 @@ export const translations = {
     'pageRange.pages': '{n} pages',
     'pageRange.pagesOfTotal': '{n} of {total} pages',
     'pageRange.process': 'Process {n} pg{s}.',
-    'pageRange.clickPending': 'Click a pending section to select its range.',
+    'pageRange.clickPending': 'Click on pending sections to select them.',
     'pageRange.fastEconomical': 'Fast and economical',
     'pageRange.higherQuality': 'Higher quality',
     'pageRange.fastFreeTier': 'Fast, free tier',
@@ -385,6 +440,10 @@ export const translations = {
     // Study guide
     'guide.outline': 'Outline',
     'guide.path': 'Path',
+    'guide.graph': 'Graph',
+    'guide.intro': 'Introduction',
+    'guide.openSidebar': 'Open sidebar',
+    'guide.closeSidebar': 'Close sidebar',
     'guide.incomplete': 'Incomplete document: {current} of {total} topics generated',
     'guide.resume': 'Continue processing',
     'guide.expandCoverage': 'Expand coverage',
@@ -393,6 +452,21 @@ export const translations = {
     'guide.viewAll': 'View all',
     'guide.selectTopic': 'Select a topic from the side panel',
     'guide.backToLibrary': 'Back to library',
+
+    // Connection graph
+    'graph.noConnections': 'No connections between topics to visualize',
+    'graph.topics': 'topics',
+    'relevance.core': 'Core',
+    'relevance.supporting': 'Supporting',
+    'relevance.detail': 'Detail',
+
+    // Book intro
+    'intro.untitled': 'Untitled',
+    'intro.pages': 'pages',
+    'intro.topics': 'topics',
+    'intro.overview': 'Overview',
+    'intro.generateSummary': 'Generate introduction',
+    'intro.tableOfContents': 'Table of contents',
 
     // Topic card
     'topic.coreConcept': 'Core Concept',
@@ -483,6 +557,22 @@ export const translations = {
     'coverage.processed': 'Processed',
     'coverage.pending': 'Pending',
     'coverage.clickToProcess': 'Click to process',
+    'coverage.clickToSelect': 'Click to select',
+    'coverage.clickToDeselect': 'Click to deselect',
+    'coverage.selectAllPending': 'Select all pending',
+    'coverage.clearSelection': 'Clear selection',
+    'coverage.sectionsSelected': '{n} sections selected',
+    'coverage.includesGap': 'Range includes unselected sections in between',
+
+    // PDF storage
+    'pdf.saveToServer': 'Save PDF to server',
+    'pdf.saveToServerNote': 'Access PDF from other devices',
+    'pdf.download': 'Download PDF',
+    'pdf.link': 'Link PDF',
+    'pdf.linkSuccess': 'PDF linked successfully',
+    'pdf.linkMismatch': 'This PDF does not match this book',
+    'pdf.downloading': 'Downloading...',
+    'pdf.autoLoaded': 'PDF loaded automatically',
 
     // Progress dashboard
     'progress.title': 'Document progress',

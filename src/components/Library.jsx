@@ -4,7 +4,8 @@ import { getModelName } from '../lib/models'
 import { useTranslation } from '../lib/useTranslation'
 import {
   FileText, Upload, Trash2, Clock, BookOpen,
-  ChevronRight, AlertCircle, Loader2, Files, Cpu, Pencil
+  ChevronRight, AlertCircle, Loader2, Files, Cpu, Pencil,
+  RotateCcw, Trash, AlertTriangle
 } from 'lucide-react'
 
 function formatDate(ts, t, locale = 'es-AR') {
@@ -113,7 +114,7 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
             maxLength={100}
           />
         ) : (
-          <h3 className="text-sm font-semibold text-text truncate mb-1 group-hover:text-accent transition-colors" title={displayName}>
+          <h3 className="text-sm font-semibold text-text line-clamp-2 mb-1 group-hover:text-accent transition-colors" title={displayName}>
             {displayName}
           </h3>
         )}
@@ -184,16 +185,142 @@ function DocumentCard({ doc, onOpen, onDelete, onRename }) {
   )
 }
 
+function TrashedCard({ doc, onRestore, onPermanentDelete }) {
+  const { t, language } = useTranslation()
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const displayName = doc.displayName || doc.fileName
+  const locale = language === 'en' ? 'en-US' : 'es-AR'
+
+  const daysLeft = Math.max(0, Math.ceil((doc.deletedAt + 7 * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)))
+  const deletedDate = new Date(doc.deletedAt).toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+  const processedDate = doc.processedAt
+    ? new Date(doc.processedAt).toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+    : null
+
+  // Pages info
+  const pagesLabel = doc.pageRange
+    ? `p. ${doc.pageRange.start}–${doc.pageRange.end} / ${doc.pageRange.originalTotal}`
+    : doc.totalPages
+      ? `${doc.totalPages} ${t('common.pages')}`
+      : null
+
+  return (
+    <div className="rounded-xl border border-surface-light/30 bg-surface-alt/40 opacity-70 hover:opacity-100 transition-all duration-200">
+      <div className="p-4">
+        {/* Title + status */}
+        <div className="flex items-start gap-3 mb-2">
+          <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
+            <Trash2 className="w-4 h-4 text-red-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-medium text-text-dim truncate" title={displayName}>
+              {displayName}
+            </h3>
+            {doc.bookId && (
+              <span className="text-[9px] font-medium text-accent/70 bg-accent/5 px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 mt-0.5">
+                <BookOpen className="w-2.5 h-2.5" />
+                {t('library.book')}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Metadata grid */}
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-text-muted ml-11">
+          {pagesLabel && (
+            <span className="flex items-center gap-1">
+              <Files className="w-3 h-3 shrink-0" />
+              {pagesLabel}
+            </span>
+          )}
+          {doc.topicCount > 0 && (
+            <span className="flex items-center gap-1">
+              <FileText className="w-3 h-3 shrink-0" />
+              {doc.topicCount} {doc.topicCount === 1
+                ? (language === 'en' ? 'section' : 'sección')
+                : (language === 'en' ? 'sections' : 'secciones')}
+            </span>
+          )}
+          {processedDate && (
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3 shrink-0" />
+              {processedDate}
+            </span>
+          )}
+          {doc.fileSize && (
+            <span>{formatSize(doc.fileSize)}</span>
+          )}
+          {doc.model && (
+            <span className="flex items-center gap-1">
+              <Cpu className="w-3 h-3 shrink-0" />
+              {getModelName(doc.model)}
+            </span>
+          )}
+          {doc.status && (
+            <span className={doc.status === 'ready' ? 'text-green-400/70' : 'text-amber-400/70'}>
+              {doc.status === 'ready' ? t('library.ready') : t('library.incomplete')}
+            </span>
+          )}
+        </div>
+
+        {/* Expiry info */}
+        <div className="flex items-center gap-2 mt-2.5 ml-11 text-[10px]">
+          <span className="text-text-muted">{t('library.deletedAt', { date: deletedDate })}</span>
+          <span className="text-text-muted">·</span>
+          <span className={daysLeft <= 1 ? 'text-red-400 font-medium' : 'text-text-muted'}>
+            {daysLeft <= 0 ? t('library.expiresToday') : t('library.expiresIn', { n: daysLeft })}
+          </span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="border-t border-surface-light/20 px-4 py-2 flex items-center gap-2">
+        <button
+          onClick={() => onRestore(doc.id)}
+          className="text-[11px] flex items-center gap-1 px-2 py-1 rounded text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors"
+        >
+          <RotateCcw className="w-3 h-3" />
+          {t('library.restore')}
+        </button>
+        <button
+          onClick={() => {
+            if (confirmDelete) {
+              onPermanentDelete(doc.id)
+            } else {
+              setConfirmDelete(true)
+              setTimeout(() => setConfirmDelete(false), 3000)
+            }
+          }}
+          className={`text-[11px] flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+            confirmDelete
+              ? 'text-error bg-error/10 hover:bg-error/20'
+              : 'text-text-muted hover:text-error'
+          }`}
+        >
+          <Trash2 className="w-3 h-3" />
+          {confirmDelete ? t('common.confirm') : t('library.permanentDelete')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function Library({ onNewDocument }) {
   const { t } = useTranslation()
   const documents = useDocumentStore(s => s.documents)
+  const trashedDocuments = useDocumentStore(s => s.trashedDocuments)
   const loading = useDocumentStore(s => s.loading)
   const setActiveDocument = useDocumentStore(s => s.setActiveDocument)
   const deleteDocument = useDocumentStore(s => s.deleteDocument)
+  const restoreDocument = useDocumentStore(s => s.restoreDocument)
+  const permanentlyDeleteDocument = useDocumentStore(s => s.permanentlyDeleteDocument)
+  const emptyTrash = useDocumentStore(s => s.emptyTrash)
   const renameDocument = useDocumentStore(s => s.renameDocument)
 
   const [dragging, setDragging] = useState(false)
   const [uploadError, setUploadError] = useState(null)
+  const [showTrash, setShowTrash] = useState(false)
+  const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false)
   const fileInputRef = useRef(null)
 
   const handleFile = (file) => {
@@ -357,6 +484,63 @@ export default function Library({ onNewDocument }) {
           />
         ))}
       </div>
+
+      {/* Trash section */}
+      {trashedDocuments.length > 0 && (
+        <div className="mt-8 pt-6 border-t border-surface-light/20">
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => setShowTrash(!showTrash)}
+              className="flex items-center gap-2 text-sm text-text-muted hover:text-text-dim transition-colors"
+            >
+              <Trash className="w-4 h-4" />
+              <span className="font-medium">{t('library.trash')}</span>
+              <span className="text-[10px] bg-surface-light/60 text-text-muted px-1.5 py-0.5 rounded-full">
+                {trashedDocuments.length}
+              </span>
+              <ChevronRight className={`w-3 h-3 transition-transform ${showTrash ? 'rotate-90' : ''}`} />
+            </button>
+
+            {showTrash && (
+              <button
+                onClick={() => {
+                  if (confirmEmptyTrash) {
+                    emptyTrash()
+                    setConfirmEmptyTrash(false)
+                    setShowTrash(false)
+                  } else {
+                    setConfirmEmptyTrash(true)
+                    setTimeout(() => setConfirmEmptyTrash(false), 4000)
+                  }
+                }}
+                className={`text-[11px] flex items-center gap-1 px-2.5 py-1 rounded transition-colors ${
+                  confirmEmptyTrash
+                    ? 'text-error bg-error/10 hover:bg-error/20'
+                    : 'text-text-muted hover:text-error'
+                }`}
+              >
+                <AlertTriangle className="w-3 h-3" />
+                {confirmEmptyTrash
+                  ? t('library.emptyTrashConfirm', { n: trashedDocuments.length })
+                  : t('library.emptyTrash')}
+              </button>
+            )}
+          </div>
+
+          {showTrash && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 animate-fadeIn">
+              {trashedDocuments.map(doc => (
+                <TrashedCard
+                  key={doc.id}
+                  doc={doc}
+                  onRestore={restoreDocument}
+                  onPermanentDelete={permanentlyDeleteDocument}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

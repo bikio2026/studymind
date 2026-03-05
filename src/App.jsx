@@ -7,6 +7,7 @@ import { useDocumentStore } from './stores/documentStore'
 import { useStudyStore } from './stores/studyStore'
 import { useProgressStore } from './stores/progressStore'
 import { db } from './lib/db'
+import { pdfStorage } from './lib/pdfStorage'
 import { getModelName } from './lib/models'
 import { detectTOCPages, extractTOCTextFromRegions } from './lib/textUtils'
 import { detectLanguage } from './lib/languageDetector'
@@ -21,7 +22,7 @@ import ThemeSelector from './components/ThemeSelector'
 import { useThemeStore } from './stores/themeStore'
 import { useTranslation } from './lib/useTranslation'
 import { useLanguageStore } from './lib/useTranslation'
-import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu, Loader2 } from 'lucide-react'
+import { BookOpen, RotateCcw, FileText, AlertCircle, ArrowLeft, Cpu, Loader2, CheckCircle } from 'lucide-react'
 
 // Jaccard similarity: word overlap between two strings (0-1)
 // Used as fallback for matching sections with legacy numeric IDs
@@ -88,6 +89,7 @@ export default function App() {
   const [expandingBookData, setExpandingBookData] = useState(null) // book data for "Ampliar cobertura"
   const [expandError, setExpandError] = useState(null)
   const expandFileRef = useRef(null)
+  const originalFileRef = useRef(null) // holds the raw File for PDF storage
 
   // Zustand stores
   const activeDocumentId = useDocumentStore(s => s.activeDocumentId)
@@ -162,6 +164,36 @@ export default function App() {
     const loadBook = async () => {
       try {
         const doc = await db.getDocument(activeDocumentId)
+
+        // Auto-create Book for legacy documents without bookId
+        if (doc && !doc.bookId) {
+          try {
+            let book = doc.contentHash ? await db.getBookByHash(doc.contentHash) : null
+            if (!book) {
+              const docStructure = await db.getStructure(activeDocumentId)
+              if (docStructure) {
+                book = {
+                  id: crypto.randomUUID(),
+                  contentHash: doc.contentHash || `legacy-${doc.id}`,
+                  fileName: doc.fileName,
+                  totalPages: doc.totalPages,
+                  structure: docStructure,
+                  createdAt: Date.now(),
+                }
+                await db.saveBook(book)
+                console.log(`[StudyMind] Auto-created Book for legacy document "${doc.fileName}"`)
+              }
+            }
+            if (book) {
+              doc.bookId = book.id
+              if (!doc.contentHash) doc.contentHash = book.contentHash
+              await db.saveDocument(doc)
+            }
+          } catch (err) {
+            console.warn('[StudyMind] Auto-create book failed:', err.message)
+          }
+        }
+
         if (!doc?.bookId) {
           setBookData(null)
           return
@@ -322,6 +354,7 @@ export default function App() {
   // Full processing pipeline for new PDF — with deduplication check
   const handleFileSelect = useCallback(async (file) => {
     setPhase('parsing')
+    originalFileRef.current = file // keep reference for PDF storage
 
     const doc = await parseFile(file)
     if (!doc) {
@@ -332,6 +365,15 @@ export default function App() {
     // Compute content hash for deduplication
     const contentHash = await computeContentHash(doc.fullText, doc.totalPages)
     const existingDocs = await db.findByContentHash(contentHash)
+
+    // Save PDF to IndexedDB (always, fast and free)
+    try {
+      const buffer = await file.arrayBuffer()
+      await pdfStorage.save(contentHash, buffer)
+      console.log(`[StudyMind] PDF cached in IndexedDB (${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB)`)
+    } catch (e) {
+      console.warn('[StudyMind] IndexedDB save failed:', e.message)
+    }
 
     if (existingDocs.length > 0) {
       // Show duplicate dialog — pause processing
@@ -411,6 +453,24 @@ export default function App() {
           filteredDoc.tocText = extractTOCTextFromRegions(tocResult)
         }
       }
+    }
+
+    // Upload PDF to Vercel Blob in background (non-blocking)
+    if (config.saveToServer && contentHash && originalFileRef.current) {
+      const fileToUpload = originalFileRef.current
+      ;(async () => {
+        try {
+          const { upload } = await import('@vercel/blob/client')
+          const blob = await upload(`pdfs/${contentHash}.pdf`, fileToUpload, {
+            access: 'public',
+            handleUploadUrl: '/api/pdf-upload',
+          })
+          console.log(`[StudyMind] PDF uploaded to server: ${blob.url}`)
+          await db.updateBookBlobUrl(contentHash, blob.url)
+        } catch (e) {
+          console.warn('[StudyMind] Server PDF upload failed (IndexedDB backup exists):', e.message)
+        }
+      })()
     }
 
     setPhase('parsing')
@@ -533,13 +593,103 @@ export default function App() {
     setActiveDocument(documentId)
   }, [resetParser, resetGuide, setActiveDocument])
 
-  // Expand coverage: trigger file upload for same book
-  const handleExpandCoverage = useCallback(() => {
+  // Expand coverage: try stored PDF first, then file picker
+  const handleExpandCoverage = useCallback(async () => {
     if (!bookData?.book) return
-    setExpandingBookData(bookData)
     setExpandError(null)
+
+    const hash = bookData.book.contentHash
+    const isLegacyHash = hash?.startsWith('legacy-')
+
+    // 1. Try IndexedDB (fast local cache)
+    try {
+      const buffer = await pdfStorage.get(hash)
+      if (buffer) {
+        console.log(`[StudyMind] PDF found in IndexedDB (${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB)`)
+        const file = new File([buffer], bookData.book.fileName || 'book.pdf', { type: 'application/pdf' })
+        // Navigate away, parse and show dialog directly
+        clearActiveDocument()
+        resetParser()
+        resetGuide()
+        setPhase('parsing')
+
+        const doc = await parseFile(file)
+        if (!doc) { setPhase('idle'); return }
+
+        const contentHash = await computeContentHash(doc.fullText, doc.totalPages)
+        if (contentHash !== hash) {
+          if (isLegacyHash) {
+            // Legacy book: update hash to real computed hash
+            console.log(`[StudyMind] Legacy book hash upgraded: ${hash} → ${contentHash}`)
+            await db.updateBookContentHash(bookData.book.id, contentHash)
+            bookData.book.contentHash = contentHash
+            // Re-save PDF under the correct hash
+            try { await pdfStorage.save(contentHash, buffer) } catch { /* ok */ }
+          } else {
+            console.warn('[StudyMind] IndexedDB PDF hash mismatch — falling back to file picker')
+            setExpandingBookData(bookData)
+            setPhase('idle')
+            setTimeout(() => expandFileRef.current?.click(), 0)
+            return
+          }
+        }
+
+        setPhase('idle')
+        setPageRangeInfo({ parsedDoc: doc, contentHash, bookData })
+        return
+      }
+    } catch (e) {
+      console.warn('[StudyMind] IndexedDB read failed:', e.message)
+    }
+
+    // 2. Try Vercel Blob (server, cross-device)
+    if (bookData.book.pdfBlobUrl) {
+      try {
+        console.log('[StudyMind] Downloading PDF from server...')
+        clearActiveDocument()
+        resetParser()
+        resetGuide()
+        setPhase('parsing')
+
+        const res = await fetch(`/api/pdf-download?hash=${hash}`)
+        if (res.ok) {
+          const blob = await res.blob()
+          const file = new File([blob], bookData.book.fileName || 'book.pdf', { type: 'application/pdf' })
+          // Cache in IndexedDB for next time
+          try { await pdfStorage.save(hash, await blob.arrayBuffer()) } catch { /* ok */ }
+
+          const doc = await parseFile(file)
+          if (!doc) { setPhase('idle'); return }
+
+          const contentHash = await computeContentHash(doc.fullText, doc.totalPages)
+          if (contentHash !== hash) {
+            if (isLegacyHash) {
+              console.log(`[StudyMind] Legacy book hash upgraded: ${hash} → ${contentHash}`)
+              await db.updateBookContentHash(bookData.book.id, contentHash)
+              bookData.book.contentHash = contentHash
+            } else {
+              console.warn('[StudyMind] Server PDF hash mismatch')
+              setPhase('idle')
+              setExpandingBookData(bookData)
+              setTimeout(() => expandFileRef.current?.click(), 0)
+              return
+            }
+          }
+
+          setPhase('idle')
+          setPageRangeInfo({ parsedDoc: doc, contentHash, bookData })
+          return
+        }
+      } catch (e) {
+        console.warn('[StudyMind] Server PDF download failed:', e.message)
+      }
+    }
+
+    // 3. Fallback: file picker
+    setExpandingBookData(bookData)
+    setPhase('idle')
     setTimeout(() => expandFileRef.current?.click(), 0)
-  }, [bookData])
+  }, [bookData, parseFile, setPhase, clearActiveDocument, resetParser, resetGuide])
 
   // Expand coverage: file selected
   const handleExpandFileChange = useCallback(async (e) => {
@@ -571,12 +721,26 @@ export default function App() {
 
     const contentHash = await computeContentHash(doc.fullText, doc.totalPages)
 
-    // Validate hash matches the book
+    // Cache PDF in IndexedDB for next time
+    try {
+      const buffer = await file.arrayBuffer()
+      await pdfStorage.save(contentHash, buffer)
+    } catch { /* ok */ }
+
+    // Validate hash matches the book (skip for legacy auto-created books)
+    const isLegacyHash = expandingBookData.book.contentHash?.startsWith('legacy-')
     if (contentHash !== expandingBookData.book.contentHash) {
-      setPhase('idle')
-      setExpandError(t('upload.mismatch'))
-      setExpandingBookData(null)
-      return
+      if (isLegacyHash) {
+        // Legacy book: update hash to real computed hash
+        console.log(`[StudyMind] Legacy book hash upgraded: ${expandingBookData.book.contentHash} → ${contentHash}`)
+        await db.updateBookContentHash(expandingBookData.book.id, contentHash)
+        expandingBookData.book.contentHash = contentHash
+      } else {
+        setPhase('idle')
+        setExpandError(t('upload.mismatch'))
+        setExpandingBookData(null)
+        return
+      }
     }
 
     // Show page range dialog with book data (skip duplicate dialog)
@@ -588,6 +752,82 @@ export default function App() {
     })
     setExpandingBookData(null)
   }, [expandingBookData, parseFile, setPhase, clearActiveDocument, resetParser, resetGuide])
+
+  // PDF availability state for download button
+  const [pdfAvailable, setPdfAvailable] = useState(false)
+  const [headerHidden, setHeaderHidden] = useState(false)
+
+  useEffect(() => {
+    if (!bookData?.book?.contentHash) {
+      setPdfAvailable(false)
+      return
+    }
+    // Check IndexedDB or blob URL
+    const hash = bookData.book.contentHash
+    pdfStorage.has(hash).then(has => {
+      setPdfAvailable(has || !!bookData.book.pdfBlobUrl)
+    }).catch(() => {
+      setPdfAvailable(!!bookData.book.pdfBlobUrl)
+    })
+  }, [bookData])
+
+  // Download PDF from IndexedDB or server
+  const handleDownloadPDF = useCallback(async () => {
+    if (!bookData?.book) return
+    const hash = bookData.book.contentHash
+    const fileName = bookData.book.fileName || 'document.pdf'
+
+    // Try IndexedDB first
+    try {
+      const buffer = await pdfStorage.get(hash)
+      if (buffer) {
+        const blob = new Blob([buffer], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = fileName
+        a.click()
+        URL.revokeObjectURL(url)
+        return
+      }
+    } catch { /* try server */ }
+
+    // Fallback: server download
+    if (bookData.book.pdfBlobUrl) {
+      const a = document.createElement('a')
+      a.href = `/api/pdf-download?hash=${hash}`
+      a.download = fileName
+      a.click()
+    }
+  }, [bookData])
+
+  // Link PDF retroactively to a book that was imported before upload existed
+  const linkPdfRef = useRef(null)
+  const [linkPdfMessage, setLinkPdfMessage] = useState(null)
+
+  const handleLinkPDF = useCallback(() => {
+    if (linkPdfRef.current) linkPdfRef.current.click()
+  }, [])
+
+  const handleLinkPDFChange = useCallback(async (e) => {
+    const file = e.target.files?.[0]
+    if (linkPdfRef.current) linkPdfRef.current.value = ''
+    if (!file || !bookData?.book) return
+
+    try {
+      const buffer = await file.arrayBuffer()
+      const hash = bookData.book.contentHash
+      await pdfStorage.save(hash, buffer)
+      setPdfAvailable(true)
+      setLinkPdfMessage('success')
+      console.log(`[StudyMind] PDF linked to book "${bookData.book.fileName}" (${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB)`)
+      setTimeout(() => setLinkPdfMessage(null), 3000)
+    } catch (err) {
+      console.error('[StudyMind] Link PDF error:', err)
+      setLinkPdfMessage('error')
+      setTimeout(() => setLinkPdfMessage(null), 3000)
+    }
+  }, [bookData])
 
   // Determine current visual phase
   const currentPhase = parsing ? 'parsing'
@@ -670,25 +910,31 @@ export default function App() {
   const activeDoc = useDocumentStore.getState().documents.find(d => d.id === activeDocumentId)
 
   return (
-    <div className="min-h-screen bg-surface p-4">
-      {/* Header */}
-      <header className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
+    <div className="min-h-screen md:h-screen md:flex md:flex-col bg-surface p-4 pb-2">
+      {/* Header — auto-hides on mobile scroll down */}
+      <header className={`shrink-0 flex items-center justify-between transition-all duration-300 overflow-hidden ${
+        headerHidden ? 'max-h-0 opacity-0 mb-0' : 'max-h-24 mb-4 md:mb-6'
+      }`}>
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={handleBackToLibrary}
-            className="p-1.5 rounded-lg hover:bg-surface-alt transition-colors text-text-muted hover:text-text"
+            className="p-1.5 rounded-lg hover:bg-surface-alt transition-colors text-text-muted hover:text-text shrink-0"
             title={t('guide.backToLibrary')}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <BookOpen className="w-6 h-6 text-accent" />
-          <h1 className="text-xl font-bold tracking-tight">StudyMind</h1>
+          <BookOpen className="w-6 h-6 text-accent shrink-0 hidden sm:block" />
+          <h1 className="text-xl font-bold tracking-tight hidden sm:block">StudyMind</h1>
           {activeDoc && (
-            <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1 rounded-lg flex items-center gap-1.5 ml-2">
-              <FileText className="w-3 h-3" />
-              {activeDoc.displayName || activeDoc.fileName}
-              <span className="text-text-muted/60">
-                ({activeDoc.totalPages} pág.{activeDoc.originalTotalPages ? ` de ${activeDoc.originalTotalPages}` : ''})
+            <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1.5 rounded-lg flex items-start gap-1.5 sm:ml-2 max-w-[120px] sm:max-w-[200px] md:max-w-xs lg:max-w-md">
+              <FileText className="w-3 h-3 shrink-0 mt-0.5" />
+              <span className="flex flex-col min-w-0">
+                <span className="line-clamp-2 text-text-dim leading-tight">
+                  {activeDoc.displayName || activeDoc.fileName}
+                </span>
+                <span className="text-text-muted/60 text-[10px]">
+                  {activeDoc.totalPages} pág.{activeDoc.originalTotalPages ? ` de ${activeDoc.originalTotalPages}` : ''}
+                </span>
               </span>
             </span>
           )}
@@ -710,7 +956,7 @@ export default function App() {
           </div>
           <ThemeSelector />
           {activeDoc?.model && (
-            <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1 rounded-lg flex items-center gap-1.5 border border-surface-light/30">
+            <span className="text-xs text-text-muted bg-surface-alt px-2.5 py-1 rounded-lg hidden md:flex items-center gap-1.5 border border-surface-light/30">
               <Cpu className="w-3 h-3" />
               {getModelName(activeDoc.model)}
               {activeDoc.processedAt && (
@@ -789,8 +1035,12 @@ export default function App() {
           resuming={resuming}
           bookData={bookData}
           onExpandCoverage={handleExpandCoverage}
+          onDownloadPDF={handleDownloadPDF}
+          pdfAvailable={pdfAvailable}
+          onLinkPDF={bookData?.book ? handleLinkPDF : undefined}
           onNavigateToDocument={handleNavigateToDocument}
           language={activeDoc?.language || 'es'}
+          onHeaderVisibilityChange={setHeaderHidden}
         />
       )}
 
@@ -835,6 +1085,15 @@ export default function App() {
         className="hidden"
       />
 
+      {/* Hidden file input for link PDF */}
+      <input
+        ref={linkPdfRef}
+        type="file"
+        accept=".pdf"
+        onChange={handleLinkPDFChange}
+        className="hidden"
+      />
+
       {/* Expand coverage error toast */}
       {expandError && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-fadeIn">
@@ -847,6 +1106,26 @@ export default function App() {
             >
               ✕
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Link PDF toast */}
+      {linkPdfMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-fadeIn">
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg backdrop-blur-sm ${
+            linkPdfMessage === 'success'
+              ? 'bg-emerald-500/10 border border-emerald-500/20'
+              : 'bg-error/10 border border-error/20'
+          }`}>
+            {linkPdfMessage === 'success' ? (
+              <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-error shrink-0" />
+            )}
+            <span className={`text-sm ${linkPdfMessage === 'success' ? 'text-emerald-500' : 'text-error'}`}>
+              {t(linkPdfMessage === 'success' ? 'pdf.linkSuccess' : 'pdf.linkMismatch')}
+            </span>
           </div>
         </div>
       )}

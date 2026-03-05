@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { FileText, Scissors, X, Cpu, Zap, ChevronRight, BookOpen, Info, Globe } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { FileText, Scissors, X, Cpu, Zap, ChevronRight, BookOpen, Info, Globe, CheckSquare, XSquare, Cloud } from 'lucide-react'
 import BookCoverageBar from './BookCoverageBar'
 import { getLanguageName, getSupportedLanguages } from '../lib/languageDetector'
 import { useTranslation } from '../lib/useTranslation'
@@ -33,6 +33,9 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
   const [startRaw, setStartRaw] = useState('1')
   const [endRaw, setEndRaw] = useState(String(totalPages))
 
+  // Multi-select state for interactive coverage bar
+  const [selectedSectionIds, setSelectedSectionIds] = useState(new Set())
+
   // LLM selection — read last used from localStorage
   const [provider, setProvider] = useState(
     () => localStorage.getItem(STORAGE_KEYS.provider) || 'claude'
@@ -43,6 +46,11 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
 
   // Content language (auto-detected, overridable)
   const [language, setLanguage] = useState(detectedLanguage || 'es')
+
+  // PDF server storage toggle
+  const [saveToServer, setSaveToServer] = useState(
+    () => localStorage.getItem('studymind-save-pdf-server') !== 'false'
+  )
 
   // TOC configuration
   const [tocOpen, setTocOpen] = useState(false)
@@ -58,11 +66,95 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
   const isFullRange = startPage === 1 && endPage === totalPages
   const isValid = startPage >= 1 && endPage <= totalPages && startPage <= endPage && startRaw !== '' && endRaw !== ''
 
+  // Book sections (filtered to leaf sections, excluding grouping headers)
+  const bookSections = useMemo(() => {
+    if (!bookStructure?.sections) return []
+    const allSections = bookStructure.sections.filter(s => (s.level || 1) <= 2)
+    const parentIds = new Set(allSections.filter(s => s.parentId).map(s => String(s.parentId)))
+    return allSections.filter(s => !parentIds.has(String(s.id)))
+  }, [bookStructure])
+
+  // Pending sections (not yet processed)
+  const pendingSections = useMemo(() => {
+    return bookSections.filter(s => !processedSectionIds?.has(s.id))
+  }, [bookSections, processedSectionIds])
+
+  const hasBookData = bookSections.length > 0
+
+  // Auto-update page range when selection changes
+  useEffect(() => {
+    if (selectedSectionIds.size === 0) return
+
+    const selected = bookSections.filter(s => selectedSectionIds.has(s.id))
+    if (selected.length === 0) return
+
+    let minStart = Infinity
+    let maxEnd = -Infinity
+
+    for (const s of selected) {
+      const start = s.pageStart || s.bookPage || 0
+      const end = s.pageEnd || s.bookPage || start
+      if (start > 0 && start < minStart) minStart = start
+      if (end > 0 && end > maxEnd) maxEnd = end
+    }
+
+    if (minStart !== Infinity && maxEnd !== -Infinity) {
+      setStartRaw(String(Math.max(1, minStart)))
+      setEndRaw(String(Math.min(maxEnd, totalPages)))
+    }
+  }, [selectedSectionIds, bookSections, totalPages])
+
+  // Check if selection has gaps (non-contiguous)
+  const selectionHasGaps = useMemo(() => {
+    if (selectedSectionIds.size <= 1) return false
+    // Find indices of selected sections in the book order
+    const selectedIndices = []
+    bookSections.forEach((s, i) => {
+      if (selectedSectionIds.has(s.id)) selectedIndices.push(i)
+    })
+    // Check for gaps
+    for (let i = 1; i < selectedIndices.length; i++) {
+      const gapStart = selectedIndices[i - 1] + 1
+      const gapEnd = selectedIndices[i]
+      // Check if any section in the gap is NOT processed (= actual gap)
+      for (let j = gapStart; j < gapEnd; j++) {
+        if (!processedSectionIds?.has(bookSections[j]?.id)) {
+          return true
+        }
+      }
+    }
+    return false
+  }, [selectedSectionIds, bookSections, processedSectionIds])
+
+  // Toggle a section in/out of selection
+  const handleSectionToggle = (sectionId) => {
+    setSelectedSectionIds(prev => {
+      const next = new Set(prev)
+      if (next.has(sectionId)) {
+        next.delete(sectionId)
+      } else {
+        next.add(sectionId)
+      }
+      return next
+    })
+  }
+
+  // Select all pending sections
+  const handleSelectAllPending = () => {
+    setSelectedSectionIds(new Set(pendingSections.map(s => s.id)))
+  }
+
+  // Clear selection
+  const handleClearSelection = () => {
+    setSelectedSectionIds(new Set())
+  }
+
   const handleConfirm = () => {
     if (isValid) {
-      // Persist LLM selection for next time
+      // Persist LLM selection + PDF storage preference
       localStorage.setItem(STORAGE_KEYS.provider, provider)
       localStorage.setItem(STORAGE_KEYS.model, model)
+      localStorage.setItem('studymind-save-pdf-server', String(saveToServer))
 
       // Build TOC config
       let tocConfig = { mode: tocMode }
@@ -76,7 +168,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
         }
       }
 
-      onConfirm(startPage, endPage, { provider, model, language }, tocConfig)
+      onConfirm(startPage, endPage, { provider, model, language, saveToServer }, tocConfig)
     }
   }
 
@@ -101,7 +193,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
 
   const providerAvailable = (key) => !status || status[key]
 
-  // Handle click on a pending section in the coverage bar
+  // Legacy single-click (for cases without multi-select)
   const handleSectionClick = (section) => {
     if (section.pageStart && section.pageEnd) {
       setStartRaw(String(Math.max(1, section.pageStart)))
@@ -113,11 +205,9 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
     }
   }
 
-  const hasBookData = bookStructure?.sections?.length > 0
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fadeIn">
-      <div className="bg-surface rounded-2xl border border-surface-light shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+      <div className="bg-surface rounded-2xl border border-surface-light shadow-2xl w-full max-w-md mx-4 overflow-hidden max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-3">
           <div className="flex items-center gap-3">
@@ -149,14 +239,57 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
             <BookCoverageBar
               bookStructure={bookStructure}
               processedSectionIds={processedSectionIds}
+              selectedSectionIds={selectedSectionIds}
               variant="interactive"
               totalPages={totalPages}
-              onSectionClick={handleSectionClick}
+              onSectionToggle={handleSectionToggle}
             />
-            <p className="text-[10px] text-text-dim mt-2 flex items-center gap-1">
-              <Info className="w-3 h-3 shrink-0" />
-              {t('pageRange.clickPending')}
-            </p>
+
+            {/* Multi-select action buttons */}
+            <div className="flex items-center gap-2 mt-2.5">
+              <button
+                onClick={handleSelectAllPending}
+                disabled={pendingSections.length === 0}
+                className="flex items-center gap-1 text-[10px] font-medium text-accent hover:text-accent/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <CheckSquare className="w-3 h-3" />
+                {t('coverage.selectAllPending')}
+              </button>
+              {selectedSectionIds.size > 0 && (
+                <button
+                  onClick={handleClearSelection}
+                  className="flex items-center gap-1 text-[10px] font-medium text-text-muted hover:text-text transition-colors"
+                >
+                  <XSquare className="w-3 h-3" />
+                  {t('coverage.clearSelection')}
+                </button>
+              )}
+            </div>
+
+            {/* Selection info */}
+            {selectedSectionIds.size > 0 && (
+              <div className="mt-2 px-2.5 py-1.5 rounded-md bg-blue-500/10 border border-blue-500/20">
+                <p className="text-[10px] font-medium text-blue-400">
+                  {t('coverage.sectionsSelected', { n: selectedSectionIds.size })}
+                  {' '}
+                  <span className="text-blue-400/70">(p.{startRaw}–{endRaw})</span>
+                </p>
+                {selectionHasGaps && (
+                  <p className="text-[10px] text-blue-400/60 mt-0.5 flex items-center gap-1">
+                    <Info className="w-2.5 h-2.5 shrink-0" />
+                    {t('coverage.includesGap')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Hint text */}
+            {selectedSectionIds.size === 0 && (
+              <p className="text-[10px] text-text-dim mt-2 flex items-center gap-1">
+                <Info className="w-3 h-3 shrink-0" />
+                {t('pageRange.clickPending')}
+              </p>
+            )}
           </div>
         )}
 
@@ -203,14 +336,14 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
           {/* Quick presets */}
           <div className="flex gap-2 mt-3">
             <button
-              onClick={() => { setStartRaw('1'); setEndRaw(String(totalPages)) }}
+              onClick={() => { setStartRaw('1'); setEndRaw(String(totalPages)); handleClearSelection() }}
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                 ${isFullRange ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
             >
               {t('pageRange.all')}
             </button>
             <button
-              onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(50, totalPages))) }}
+              onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(50, totalPages))); handleClearSelection() }}
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                 ${startPage === 1 && endPage === Math.min(50, totalPages) ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
             >
@@ -218,7 +351,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
             </button>
             {totalPages > 100 && (
               <button
-                onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(100, totalPages))) }}
+                onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(100, totalPages))); handleClearSelection() }}
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                   ${startPage === 1 && endPage === Math.min(100, totalPages) ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
               >
@@ -227,7 +360,7 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
             )}
             {totalPages > 200 && (
               <button
-                onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(150, totalPages))) }}
+                onClick={() => { setStartRaw('1'); setEndRaw(String(Math.min(150, totalPages))); handleClearSelection() }}
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors
                   ${startPage === 1 && endPage === Math.min(150, totalPages) ? 'bg-accent/15 border-accent/30 text-accent' : 'border-surface-light text-text-muted hover:text-text hover:border-surface-light/80'}`}
               >
@@ -312,6 +445,26 @@ export default function PageRangeDialog({ fileName, totalPages, status, onConfir
               {t('pageRange.detectedLangNote', { lang: getLanguageName(detectedLanguage) })}
             </p>
           )}
+        </div>
+
+        {/* PDF server storage toggle */}
+        <div className="px-6 mt-4">
+          <label className="flex items-center gap-2.5 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={saveToServer}
+              onChange={(e) => setSaveToServer(e.target.checked)}
+              className="accent-accent w-3.5 h-3.5"
+            />
+            <Cloud className="w-3.5 h-3.5 text-text-muted group-hover:text-text transition-colors" />
+            <span className="text-xs text-text-muted group-hover:text-text transition-colors">
+              {t('pdf.saveToServer')}
+            </span>
+          </label>
+          <p className="text-[10px] text-text-dim mt-1 ml-[2.125rem] flex items-center gap-1">
+            <Info className="w-2.5 h-2.5 shrink-0" />
+            {t('pdf.saveToServerNote')}
+          </p>
         </div>
 
         {/* TOC configuration — collapsible */}

@@ -10,7 +10,7 @@ import { useTranslation } from '../lib/useTranslation'
  * Variants:
  * - compact: thin bar for Library card (8px height, no labels)
  * - expanded: with percentage and tooltips for StudyGuide header
- * - interactive: clickable sections for range selector
+ * - interactive: clickable sections for range selector (supports multi-select)
  */
 
 function getSectionPages(section, totalPages) {
@@ -22,15 +22,20 @@ function getSectionPages(section, totalPages) {
 export default function BookCoverageBar({
   bookStructure,
   processedSectionIds = new Set(),
+  selectedSectionIds = new Set(),
   variant = 'compact',
   totalPages = 0,
   onSectionClick,
+  onSectionToggle,
 }) {
   const { t } = useTranslation()
-  // Only show level 1-2 sections (chapters/sections, not subsections)
+  // Only show leaf sections (chapters/sections, not grouping headers like PARTEs)
   const sections = useMemo(() => {
     if (!bookStructure?.sections) return []
-    return bookStructure.sections.filter(s => (s.level || 1) <= 2)
+    const allSections = bookStructure.sections.filter(s => (s.level || 1) <= 2)
+    // Exclude sections that serve as parent grouping headers (e.g. PARTE I, PARTE II)
+    const parentIds = new Set(allSections.filter(s => s.parentId).map(s => String(s.parentId)))
+    return allSections.filter(s => !parentIds.has(String(s.id)))
   }, [bookStructure])
 
   const stats = useMemo(() => {
@@ -44,10 +49,10 @@ export default function BookCoverageBar({
   }, [sections, processedSectionIds])
 
   // Calculate total page span for proportional widths
+  // Always use sum of section pages (not totalPages) so bar fills completely
   const totalSpan = useMemo(() => {
-    if (totalPages > 0) return totalPages
-    return sections.reduce((sum, s) => sum + getSectionPages(s, 0), 0)
-  }, [sections, totalPages])
+    return sections.reduce((sum, s) => sum + getSectionPages(s, 0), 0) || sections.length
+  }, [sections])
 
   if (!sections.length) return null
 
@@ -73,32 +78,72 @@ export default function BookCoverageBar({
           const pages = getSectionPages(section, totalPages)
           const widthPercent = totalSpan > 0 ? (pages / totalSpan) * 100 : (100 / sections.length)
           const isProcessed = processedSectionIds.has(section.id)
+          const isSelected = selectedSectionIds.has(section.id)
           const isLevel1 = (section.level || 1) === 1
+
+          // Determine color class
+          let colorClass
+          if (isProcessed) {
+            colorClass = 'bg-accent'
+          } else if (isSelected) {
+            colorClass = 'bg-blue-500 animate-pulse'
+          } else {
+            colorClass = 'bg-surface-light/60'
+          }
+
+          // Determine cursor/hover
+          let interactiveClass = ''
+          if (isInteractive && !isProcessed) {
+            interactiveClass = isSelected
+              ? 'hover:bg-blue-400 cursor-pointer'
+              : 'hover:bg-accent/30 cursor-pointer'
+          } else if (isInteractive && isProcessed) {
+            interactiveClass = 'cursor-default'
+          }
+
+          // Tooltip text
+          let tooltipExtra = ''
+          if (isInteractive) {
+            if (isProcessed) {
+              tooltipExtra = ` — ${t('coverage.processed')}`
+            } else if (isSelected) {
+              tooltipExtra = ` — ${t('coverage.clickToDeselect')}`
+            } else {
+              tooltipExtra = ` — ${t('coverage.clickToSelect')}`
+            }
+          }
 
           return (
             <div
               key={section.id || i}
               className={`
-                ${isProcessed ? 'bg-accent' : 'bg-surface-light/60'}
-                ${isInteractive && !isProcessed ? 'hover:bg-accent/30 cursor-pointer' : ''}
-                ${isInteractive && isProcessed ? 'cursor-default' : ''}
+                ${colorClass}
+                ${interactiveClass}
                 ${i > 0 && isLevel1 ? 'border-l border-surface/50' : ''}
                 transition-colors relative group
               `}
               style={{ width: `${Math.max(widthPercent, 0.5)}%` }}
               onClick={() => {
-                if (isInteractive && !isProcessed && onSectionClick) {
-                  onSectionClick(section)
+                if (isInteractive && !isProcessed) {
+                  // Multi-select mode (new)
+                  if (onSectionToggle) {
+                    onSectionToggle(section.id)
+                  }
+                  // Legacy single-click mode (fallback)
+                  else if (onSectionClick) {
+                    onSectionClick(section)
+                  }
                 }
               }}
-              title={variant !== 'compact' ? `${section.title}${section.bookPage ? ` (p.${section.bookPage})` : ''} — ${isProcessed ? t('coverage.processed') : t('coverage.pending')}` : undefined}
+              title={variant !== 'compact' ? `${section.title}${section.bookPage ? ` (p.${section.bookPage})` : ''}${tooltipExtra}` : undefined}
             >
               {/* Tooltip for interactive variant */}
               {isInteractive && (
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 pointer-events-none">
-                  <div className="bg-surface border border-surface-light rounded-lg px-2 py-1 text-[10px] text-text-dim whitespace-nowrap shadow-lg">
+                  <div className="bg-surface border border-surface-light rounded-lg px-2 py-1 text-[10px] text-text-dim whitespace-nowrap shadow-lg max-w-48 truncate">
                     {section.title}
-                    {!isProcessed && <span className="text-accent ml-1">{t('coverage.clickToProcess')}</span>}
+                    {!isProcessed && !isSelected && <span className="text-accent ml-1">{t('coverage.clickToSelect')}</span>}
+                    {isSelected && <span className="text-blue-400 ml-1">{t('coverage.clickToDeselect')}</span>}
                   </div>
                 </div>
               )}
