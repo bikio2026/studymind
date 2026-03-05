@@ -1,6 +1,6 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
-**Version actual**: v0.11
+**Version actual**: v0.12
 
 ## Qué es
 App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia server-side con SQLite (@libsql/client, compatible Turso) y biblioteca de documentos.
@@ -135,6 +135,15 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 ---
 
 ## Changelog
+
+### v0.12 — Mejoras Pedagógicas Iteración 2 (2026-03-05)
+- **Quiz persistence**: respuestas se guardan automáticamente al responder; botón "Reiniciar quiz" para limpiar
+- **Pre-reading questions mejoradas**: 5-7 preguntas (antes 3-4); ahora interactivas con textarea, evaluación LLM y feedback (qué buscar al leer, conexiones)
+- **Ruta de estudio flexible**: las 3 fases (Panorama/Profundización/Consolidación) son accesibles siempre; sin bloqueo duro, solo hints de recomendación
+- **Tutor Observations**: nuevo componente interactivo que reemplaza notas estáticas; modo global + por tema; genera preguntas focalizadas, mini-guía y temas relevantes via LLM
+- **Mapa de conexiones**: botón en toolbar abre ConnectionGraph en modal fullscreen con sizing dinámico
+- **Settings limpio**: eliminado textarea de tutor notes, agregado link a panel de Tutor Observations
+- Fix: crash en LearningPath por auto-referencia de `phaseStats` dentro de su propio `.map()`
 
 ### v0.11 — Gráficos Económicos Inline + PDF Management + Fixes (2026-03-04)
 - **Gráficos SVG inline**: componente EconChart + catálogo de ~14 gráficos pre-definidos para libro Branson
