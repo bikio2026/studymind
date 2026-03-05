@@ -1,6 +1,6 @@
 # StudyMind — Guía de Estudio Interactiva desde PDFs
 
-**Version actual**: v0.9
+**Version actual**: v0.11
 
 ## Qué es
 App web que toma un PDF, detecta su estructura, y genera una guía de estudio interactiva por tema con capas de relevancia, explicaciones mejoradas, y autoevaluación. Persistencia server-side con SQLite (@libsql/client, compatible Turso) y biblioteca de documentos.
@@ -135,6 +135,22 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 ---
 
 ## Changelog
+
+### v0.11 — Gráficos Económicos Inline + PDF Management + Fixes (2026-03-04)
+- **Gráficos SVG inline**: componente EconChart + catálogo de ~14 gráficos pre-definidos para libro Branson
+- Gráficos para: IS, LM, IS-LM, Phillips, Consumo, Inversión, Multiplicador, Demanda de Dinero, Producción, Solow, etc.
+- Se muestran en modo Intermedio/Completo entre summary y texto fuente
+- **BookIntro**: componente de introducción al libro con summary generado por LLM
+- **PDF storage**: upload/download de PDFs con Vercel Blob (api/pdf-upload.js, api/pdf-download.js)
+- **Fix barra de cobertura**: excluye PARTEs (headers agrupadores) del conteo → 15/15 correcto
+- **Fix barra no se llenaba**: usa suma de páginas de secciones como denominador (no totalPages del libro)
+- **Fix sidebar duplicado**: solo muestra panel "BOOK SECTIONS" cuando hay secciones de otros imports
+- **Fix scroll reset**: al cambiar de tema, scroll vuelve al inicio (desktop + mobile)
+- **Fix legacy hash**: auto-upgrade de contentHash "legacy-xxx" al hash real del PDF
+- **Ícono PDF rojo**: botón "Descargar PDF" con FileDown en rojo
+- **ConnectionGraph**: componente placeholder para grafo de conexiones
+- Favicon y Safari pinned tab
+- Nuevas operaciones DB: updateBookContentHash
 
 ### v0.9 — Quiz Texto Libre + Importación Incremental de Libros (2026-03-02)
 - **Quiz texto libre**: El estudiante escribe su respuesta y el LLM la evalúa (score 0-100, feedback constructivo)
