@@ -1,6 +1,7 @@
-import { useState, useMemo, useCallback } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText, Layers, BookMarked, Globe, Loader2 } from 'lucide-react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { ChevronDown, ChevronUp, CheckCircle, BookOpen, Link2, Lightbulb, AlertTriangle, MessageCircle, FileText, Layers, BookMarked, Globe, Loader2, HelpCircle } from 'lucide-react'
 import { useTranslation } from '../lib/useTranslation'
+import { useFeatureStore } from '../stores/featureStore'
 import HybridQuizSection from './HybridQuizSection'
 import ChatSection from './ChatSection'
 import ConnectionLink from './ConnectionLink'
@@ -9,6 +10,7 @@ import NextTopicSuggestion from './NextTopicSuggestion'
 import { enrichConnections } from '../lib/connectionParser'
 import { getGraphForTopic } from '../lib/graphCatalog'
 import EconChart from './EconChart'
+import PreReadingQuestions from './PreReadingQuestions'
 import { useProgressStore } from '../stores/progressStore'
 import { useStudyStore } from '../stores/studyStore'
 import { useLLMStream } from '../hooks/useLLMStream'
@@ -167,6 +169,11 @@ export default function TopicCard({ topic, documentId, bookPage, provider, langu
     chat: false,
   })
 
+  const [helpMessage, setHelpMessage] = useState(null)
+  const helpEnabled = useFeatureStore(s => s.features.helpButton)
+  const preReadingEnabled = useFeatureStore(s => s.features.preReadingQuestions)
+  useEffect(() => { setHelpMessage(null) }, [topic.id])
+
   const topicProgress = useProgressStore(s => s.progress[topic.id])
   const markStudied = useProgressStore(s => s.markStudied)
   const saveQuizScore = useProgressStore(s => s.saveQuizScore)
@@ -293,14 +300,33 @@ export default function TopicCard({ topic, documentId, bookPage, provider, langu
             )}
           </h2>
         </div>
-        {!isStudied && (
-          <button
-            onClick={() => markStudied(documentId, topic.id)}
-            className="text-xs text-text-muted hover:text-success transition-colors px-3 py-1.5 rounded-lg hover:bg-success-bg border border-transparent hover:border-success/20"
-          >
-            {t('topic.markStudied')}
-          </button>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {helpEnabled && (
+            <button
+              onClick={() => {
+                const msg = language === 'es'
+                  ? 'No entiendo este tema. ¿Podés explicármelo de una forma más simple, con una analogía o un ejemplo cotidiano?'
+                  : "I don't understand this topic. Can you explain it in a simpler way, with an analogy or an everyday example?"
+                setHelpMessage(msg)
+                setExpandedSections(prev => ({ ...prev, chat: true }))
+              }}
+              className="text-xs text-amber-400 hover:text-amber-300 transition-colors px-2.5 py-1.5 rounded-lg
+                hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20 flex items-center gap-1"
+              title={t('topic.helpButton')}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t('topic.helpButton')}</span>
+            </button>
+          )}
+          {!isStudied && (
+            <button
+              onClick={() => markStudied(documentId, topic.id)}
+              className="text-xs text-text-muted hover:text-success transition-colors px-3 py-1.5 rounded-lg hover:bg-success-bg border border-transparent hover:border-success/20"
+            >
+              {t('topic.markStudied')}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Low confidence warning */}
@@ -366,6 +392,53 @@ export default function TopicCard({ topic, documentId, bookPage, provider, langu
           <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
           <span>{t('topic.translating', { lang: getLanguageName(viewLanguage) })}</span>
         </div>
+      )}
+
+      {/* Pre-reading questions (SQ3R Question phase) */}
+      {preReadingEnabled && (
+        <PreReadingQuestions
+          topic={topic}
+          documentId={documentId}
+          provider={provider}
+          language={language}
+          onGenerate={!topic.preReadingQuestions?.length ? async () => {
+            // Generate pre-reading questions on demand for existing topics
+            const apiBase = import.meta.env.VITE_API_URL || ''
+            const secret = import.meta.env.VITE_APP_SECRET || ''
+            const endpoint = provider === 'groq' ? '/api/analyze-groq' : '/api/analyze-claude'
+            const prompt = language === 'es'
+              ? `Dado el tema "${topic.sectionTitle}" con este resumen: "${topic.summary}"\n\nGenerá 3-4 preguntas previas a la lectura que activen el conocimiento previo del estudiante y dirijan su atención. Deben ser preguntas para PENSAR antes de estudiar, no quiz. Formato: JSON array de strings. Ejemplo: ["¿Por qué...?", "¿Qué pasaría si...?"]\nRespondé SOLO con el JSON array.`
+              : `Given the topic "${topic.sectionTitle}" with this summary: "${topic.summary}"\n\nGenerate 3-4 pre-reading questions that activate prior knowledge and direct attention. These are questions to THINK about before studying, not quiz questions. Format: JSON array of strings.\nRespond ONLY with the JSON array.`
+            const res = await fetch(`${apiBase}${endpoint}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(secret ? { 'x-api-secret': secret } : {}) },
+              body: JSON.stringify({ prompt, promptVersion: 'freeform', provider, maxTokens: 512, language }),
+            })
+            if (!res.ok) throw new Error(`API error: ${res.status}`)
+            const reader = res.body.getReader()
+            const decoder = new TextDecoder()
+            let fullText = ''
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              fullText += decoder.decode(value, { stream: true })
+            }
+            const cleaned = fullText.split('\n').filter(l => l.startsWith('data: ')).map(l => {
+              const d = l.slice(6); if (d === '[DONE]') return ''
+              try { const p = JSON.parse(d); return p.token || p.text || '' } catch { return d }
+            }).join('')
+            const text = cleaned || fullText
+            // Parse JSON array from response
+            const match = text.match(/\[[\s\S]*\]/)
+            if (match) {
+              const questions = JSON.parse(match[0])
+              topic.preReadingQuestions = questions
+              // Save to DB
+              const { db: dbLib } = await import('../lib/db')
+              await dbLib.saveTopic(documentId, { ...topic, preReadingQuestions: questions })
+            }
+          } : null}
+        />
       )}
 
       {/* Summary */}
@@ -496,6 +569,7 @@ export default function TopicCard({ topic, documentId, bookPage, provider, langu
           documentId={documentId}
           provider={provider}
           language={language}
+          initialMessage={helpMessage}
         />
       </CollapsibleSection>
     </div>

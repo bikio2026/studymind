@@ -7,8 +7,10 @@ import LearningPath from './LearningPath'
 import ConnectionGraph from './ConnectionGraph'
 import ProgressDashboard from './ProgressDashboard'
 import BookCoverageBar from './BookCoverageBar'
-import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3, List, Route, Network, PlusCircle, FileDown, Paperclip, Menu, X, BookOpen } from 'lucide-react'
+import { ArrowLeft, ArrowRight, AlertCircle, Play, Loader2, BarChart3, List, Route, Network, PlusCircle, FileDown, Paperclip, Menu, X, BookOpen, Settings } from 'lucide-react'
 import { useTranslation } from '../lib/useTranslation'
+import FeatureSettings from './FeatureSettings'
+import { useFeatureStore } from '../stores/featureStore'
 
 export default function StudyGuide({ structure, topics, documentId, documentStatus, onResume, resuming, bookData, onExpandCoverage, onDownloadPDF, pdfAvailable, onLinkPDF, onNavigateToDocument, language, onHeaderVisibilityChange }) {
   const { t } = useTranslation()
@@ -21,9 +23,14 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
     if (typeof localStorage === 'undefined') return false
     return !localStorage.getItem('studymind-sidebar-used')
   })
+  const [showSettings, setShowSettings] = useState(false)
+  const loadFeatures = useFeatureStore(s => s.load)
   const provider = typeof localStorage !== 'undefined'
     ? (localStorage.getItem('studymind-llm-provider') || 'claude')
     : 'claude'
+
+  // Load feature toggles + tutor notes for this document
+  useEffect(() => { loadFeatures(documentId) }, [documentId, loadFeatures])
 
   // Auto-hide header on mobile scroll down
   const scrollRef = useRef(null)
@@ -331,6 +338,13 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
                 <BarChart3 className="w-4 h-4" />
               </button>
             )}
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-1.5 rounded-lg hover:bg-surface-alt text-text-muted hover:text-text transition-colors"
+              title={t('features.title')}
+            >
+              <Settings className="w-4 h-4" />
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -393,6 +407,7 @@ export default function StudyGuide({ structure, topics, documentId, documentStat
           </div>
         )}
       </div>
+      <FeatureSettings open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   )
 }

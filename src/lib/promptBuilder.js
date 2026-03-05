@@ -210,19 +210,26 @@ Return ONLY valid JSON:
 
 {
   "quiz": [
-    { "question": "Conceptual question evaluating deep understanding", "answer": "Complete and clear answer" },
-    { "question": "Applied question (practical case or example)", "answer": "Answer with reasoning" }
+    { "question": "...", "answer": "...", "bloomLevel": "recall" },
+    { "question": "...", "answer": "...", "bloomLevel": "understand" },
+    { "question": "...", "answer": "...", "bloomLevel": "apply" },
+    { "question": "...", "answer": "...", "bloomLevel": "analyze" }
   ],
-  "connections": ["Relationship with 'other section': explanation of how they connect"]
+  "connections": ["Relationship with 'other section': explanation of how they connect"],
+  "preReadingQuestions": ["Pre-reading question to activate prior knowledge before studying"]
 }
 
 RULES:
-- Generate 5-8 questions.
-- Required mix: at least 3 conceptual + 2 application/reasoning.
-- Conceptual questions evaluate COMPREHENSION, not data memorization.
-- Application questions pose a scenario and ask to analyze/predict.
+- Generate 5-8 quiz questions.
+- Each question MUST include "bloomLevel": one of "recall", "understand", "apply", "analyze".
+  - recall: Remembering facts, definitions, or formulas
+  - understand: Explaining concepts in own words, interpreting meaning
+  - apply: Using concepts in new situations or practical cases
+  - analyze: Breaking down, comparing, evaluating, or creating new connections
+- Required mix: at least 1 recall + 2 understand + 1 apply + 1 analyze.
 - Answers should be complete (3-5 sentences), explaining the reasoning.
 - Connections should refer to sections in the same document, indicating the specific relationship.
+- Generate 3-4 preReadingQuestions: questions to think about BEFORE studying this topic. They activate prior knowledge and direct attention. Examples: "Why do you think...?", "What would happen if...?", "How does this relate to...?"
 - ${getLangInstruction(language)}`
 }
 

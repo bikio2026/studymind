@@ -315,6 +315,59 @@ export const translations = {
     'app.noStudyDataDesc': 'Este documento se guardó pero no tiene guías generadas. Podés volver a procesarlo o eliminarlo.',
     'app.deleteDocument': 'Eliminar documento',
     'app.notAvailable': '(no disponible)',
+
+    // Common (additions)
+    'common.add': 'Agregar',
+
+    // Feature settings
+    'features.title': 'Configuración',
+    'features.pedagogical': 'Herramientas pedagógicas',
+    'features.helpButton': 'Botón "No entiendo"',
+    'features.helpButtonDesc': 'Botón contextual para explicaciones alternativas',
+    'features.preReadingQuestions': 'Preguntas previas',
+    'features.preReadingQuestionsDesc': 'Preguntas guía antes de estudiar cada tema',
+    'features.bloomBadges': 'Niveles Bloom en quiz',
+    'features.bloomBadgesDesc': 'Clasificar preguntas por nivel cognitivo',
+    'features.learningPath': 'Ruta de estudio por fases',
+    'features.learningPathDesc': 'Organizar el estudio en Panorama → Profundización → Consolidación',
+    'features.defaults': 'Valores por defecto',
+    'features.defaultQuizMode': 'Modo de quiz',
+    'features.quizSelf': 'Autoevaluación',
+    'features.quizFreetext': 'Texto libre',
+    'features.quizHybrid': 'Híbrido',
+    'features.defaultDepth': 'Nivel de profundidad',
+    'features.tutorNotes': 'Anotaciones del tutor',
+    'features.tutorNotesDesc': 'Observaciones para personalizar las respuestas de la IA',
+    'features.tutorNotesPlaceholder': 'Ej: Se traba con conceptos verbales. Entiende bien lo matemático. Necesita más analogías.',
+    'features.saveNotes': 'Guardar',
+    'features.saved': 'Guardado',
+
+    // Pre-reading questions
+    'preReading.title': 'Antes de estudiar, pensá...',
+    'preReading.empty': 'Aún no hay preguntas previas para este tema.',
+    'preReading.generate': 'Generar preguntas',
+    'preReading.addOwn': 'Agregar tu propia pregunta',
+    'preReading.addPlaceholder': '¿Qué te gustaría saber sobre este tema?',
+
+    // Bloom's taxonomy
+    'bloom.recall': 'Recordar',
+    'bloom.understand': 'Comprender',
+    'bloom.apply': 'Aplicar',
+    'bloom.analyze': 'Analizar',
+
+    // Help button
+    'topic.helpButton': 'No entiendo',
+    'topic.helpMessage': 'No entiendo este tema. ¿Podés explicármelo de una forma más simple, con una analogía o un ejemplo cotidiano?',
+
+    // Study phases (3-phase learning path)
+    'studyPhase.panorama': 'Panorama',
+    'studyPhase.panorama.desc': 'Leé los resúmenes de todos los temas para tener el mapa mental',
+    'studyPhase.deep': 'Profundización',
+    'studyPhase.deep.desc': 'Estudiá cada tema en profundidad con el libro',
+    'studyPhase.consolidation': 'Consolidación',
+    'studyPhase.consolidation.desc': 'Quiz y chat socrático para fijar el conocimiento',
+    'studyPhase.current': 'Actual',
+    'studyPhase.topics': 'Temas',
   },
 
   en: {
@@ -630,5 +683,58 @@ export const translations = {
     'app.noStudyDataDesc': 'This document was saved but has no generated guides. You can reprocess it or delete it.',
     'app.deleteDocument': 'Delete document',
     'app.notAvailable': '(not available)',
+
+    // Common (additions)
+    'common.add': 'Add',
+
+    // Feature settings
+    'features.title': 'Settings',
+    'features.pedagogical': 'Pedagogical tools',
+    'features.helpButton': '"I don\'t understand" button',
+    'features.helpButtonDesc': 'Contextual button for alternative explanations',
+    'features.preReadingQuestions': 'Pre-reading questions',
+    'features.preReadingQuestionsDesc': 'Guiding questions before studying each topic',
+    'features.bloomBadges': 'Bloom levels in quiz',
+    'features.bloomBadgesDesc': 'Classify questions by cognitive level',
+    'features.learningPath': 'Phased study path',
+    'features.learningPathDesc': 'Organize study in Overview → Deep dive → Consolidation',
+    'features.defaults': 'Defaults',
+    'features.defaultQuizMode': 'Quiz mode',
+    'features.quizSelf': 'Self-assessment',
+    'features.quizFreetext': 'Free text',
+    'features.quizHybrid': 'Hybrid',
+    'features.defaultDepth': 'Depth level',
+    'features.tutorNotes': 'Tutor annotations',
+    'features.tutorNotesDesc': 'Observations to personalize AI responses',
+    'features.tutorNotesPlaceholder': 'E.g.: Struggles with verbal concepts. Good with math. Needs more analogies.',
+    'features.saveNotes': 'Save',
+    'features.saved': 'Saved',
+
+    // Pre-reading questions
+    'preReading.title': 'Before studying, think about...',
+    'preReading.empty': 'No pre-reading questions for this topic yet.',
+    'preReading.generate': 'Generate questions',
+    'preReading.addOwn': 'Add your own question',
+    'preReading.addPlaceholder': 'What would you like to know about this topic?',
+
+    // Bloom's taxonomy
+    'bloom.recall': 'Recall',
+    'bloom.understand': 'Understand',
+    'bloom.apply': 'Apply',
+    'bloom.analyze': 'Analyze',
+
+    // Help button
+    'topic.helpButton': "I don't understand",
+    'topic.helpMessage': "I don't understand this topic. Can you explain it in a simpler way, with an analogy or an everyday example?",
+
+    // Study phases (3-phase learning path)
+    'studyPhase.panorama': 'Overview',
+    'studyPhase.panorama.desc': 'Read summaries of all topics to build a mental map',
+    'studyPhase.deep': 'Deep dive',
+    'studyPhase.deep.desc': 'Study each topic in depth with the book',
+    'studyPhase.consolidation': 'Consolidation',
+    'studyPhase.consolidation.desc': 'Quiz and Socratic chat to solidify knowledge',
+    'studyPhase.current': 'Current',
+    'studyPhase.topics': 'Topics',
   },
 }

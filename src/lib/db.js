@@ -70,4 +70,8 @@ export const db = {
   getBookDocuments: (bookId) => call('getBookDocuments', { bookId }),
   getBookTopics: (bookId) => call('getBookTopics', { bookId }),
   updateBookBlobUrl: (contentHash, blobUrl) => call('updateBookBlobUrl', { contentHash, blobUrl }),
+
+  // Tutor notes
+  getTutorNotes: (documentId) => call('getTutorNotes', { documentId }),
+  saveTutorNotes: (documentId, notes) => call('saveTutorNotes', { documentId, notes }),
 }

@@ -3,6 +3,25 @@ import { Check, X, RotateCcw, Send, Loader2, ChevronDown, ChevronUp, AlertTriang
 import { useLLMStream } from '../hooks/useLLMStream'
 import { buildQuizEvaluationPrompt } from '../lib/promptBuilder'
 import { useTranslation } from '../lib/useTranslation'
+import { useFeatureStore } from '../stores/featureStore'
+
+const BLOOM_COLORS = {
+  recall: { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20' },
+  understand: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' },
+  apply: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
+  analyze: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' },
+}
+
+function BloomBadge({ level }) {
+  const { t } = useTranslation()
+  if (!level) return null
+  const c = BLOOM_COLORS[level] || BLOOM_COLORS.understand
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium ${c.bg} ${c.text} border ${c.border} ml-1.5`}>
+      {t(`bloom.${level}`)}
+    </span>
+  )
+}
 
 function ScoreBadge({ score, classification }) {
   const { t } = useTranslation()
@@ -33,6 +52,7 @@ function ScoreBar({ score }) {
 
 export default function HybridQuizSection({ questions, topicContext, provider, language, onComplete }) {
   const { t } = useTranslation()
+  const bloomEnabled = useFeatureStore(s => s.features.bloomBadges)
 
   // Per-question state: { mode: 'pending'|'self'|'freetext', revealed, selfAnswer, textAnswer, evaluation, score }
   const [questionStates, setQuestionStates] = useState({})
@@ -179,6 +199,7 @@ export default function HybridQuizSection({ questions, topicContext, provider, l
             <p className="text-sm font-medium mb-3">
               <span className="text-accent mr-2">P{idx + 1}.</span>
               {q.question}
+              {bloomEnabled && <BloomBadge level={q.bloomLevel} />}
             </p>
 
             {/* Mode selection (pending) */}

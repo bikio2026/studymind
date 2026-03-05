@@ -33,7 +33,7 @@ function ChatBubble({ message, isStreaming = false }) {
   )
 }
 
-export default function ChatSection({ topic, documentId, provider, language }) {
+export default function ChatSection({ topic, documentId, provider, language, initialMessage }) {
   const { t } = useTranslation()
   const {
     messages,
@@ -47,6 +47,18 @@ export default function ChatSection({ topic, documentId, provider, language }) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const initialSentRef = useRef(false)
+
+  // Auto-send initial message (e.g., from "No entiendo" button)
+  useEffect(() => {
+    if (initialMessage && !initialSentRef.current && !loading && messages.length === 0) {
+      initialSentRef.current = true
+      sendMessage(initialMessage)
+    }
+  }, [initialMessage, loading, messages.length, sendMessage])
+
+  // Reset the ref when initialMessage changes (new topic)
+  useEffect(() => { initialSentRef.current = false }, [topic.id])
 
   // Auto-scroll to bottom on new messages or streaming
   useEffect(() => {
