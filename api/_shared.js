@@ -88,6 +88,8 @@ STRICT RULES:
 - For technical terms, keep the original and add translation in parentheses if helpful.
 - Quiz questions and answers must make sense in the target language.
 - Do not add, remove, or modify content — only translate.`,
+
+  freeform: `You are a helpful academic assistant. Respond naturally in the language the user writes in. Do not use markdown formatting.`,
 }
 
 const LANG_INSTRUCTIONS = {

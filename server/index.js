@@ -66,6 +66,8 @@ REGLAS:
 - Podés usar analogías y ejemplos cotidianos para clarificar conceptos.
 - Usá formato de texto plano. Nada de markdown, listas ni encabezados.
 - Nunca empezás con "¡Buena pregunta!" ni frases condescendientes similares.`,
+
+  freeform: `You are a helpful academic assistant. Respond naturally in the language the user writes in. Do not use markdown formatting.`,
 }
 
 function getSystemPrompt(version) {

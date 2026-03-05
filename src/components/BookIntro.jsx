@@ -71,6 +71,7 @@ export default function BookIntro({ structure, topics, documentId, language, pro
         },
         body: JSON.stringify({
           prompt,
+          promptVersion: 'freeform',
           provider,
           model: provider === 'groq' ? 'llama-3.3-70b-versatile' : 'claude-haiku-4-5-20251001',
           maxTokens: 1024,
@@ -169,8 +170,16 @@ export default function BookIntro({ structure, topics, documentId, language, pro
         </div>
 
         {summary ? (
-          <div className="text-sm text-text-dim leading-relaxed whitespace-pre-line">
-            {summary}
+          <div>
+            <div className="text-sm text-text-dim leading-relaxed whitespace-pre-line">
+              {summary}
+            </div>
+            <button
+              onClick={() => { setSummary(null); localStorage.removeItem(`studymind-intro-${documentId}`) }}
+              className="text-[10px] text-text-muted hover:text-accent mt-2 transition-colors"
+            >
+              {t('intro.regenerate') || 'Regenerar'}
+            </button>
           </div>
         ) : (
           <div className="text-center py-6">
