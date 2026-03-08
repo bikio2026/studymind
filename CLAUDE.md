@@ -132,6 +132,33 @@ Plan completo en `/Users/andresbiscione/.claude/plans/nested-greeting-whisper.md
 | 6 | Quiz texto libre + Importación incremental de libros | ✅ Completada |
 | 7 | Roles y multi-usuario | Pendiente |
 
+## Estado actual
+- **Fase**: Post-pedagógica (herramientas pedagógicas implementadas, iterando con feedback del tutor)
+- **Funciona**: biblioteca, procesamiento PDF, 15 temas Branson, quiz con persistencia, pre-reading interactivas, chat socrático, gráficos inline, 10 temas, connection map fullscreen, tutor observations (modal), settings con toggles pedagógicos
+- **No funciona / roto**: nada roto conocido
+- **Próximo**: Inyectar contenido del tutor en la experiencia del estudiante (conceptos clave, quiz, explicación profunda)
+
+## Para retomar
+> Última sesión: 2026-03-08
+
+### Lo que se hizo
+- Implementadas 6 mejoras pedagógicas (v0.12): quiz persistence, pre-reading interactivas, ruta 3 fases flexible, tutor observations, connection map fullscreen, settings limpio
+- Fix crash en LearningPath (auto-referencia `phaseStats` en `.map()`)
+- Ruta de 3 fases cambiada a **default OFF** (toggle sigue disponible)
+- Deploy a producción verificado
+
+### Decisiones pendientes
+- **Contenido del tutor → experiencia del estudiante**: El usuario quiere que las observaciones del tutor (generadas en TutorObservations modal) se inyecten en los TopicCards relevantes como sección "Foco del tutor" con las preguntas y mini-guía. Hoy el contenido generado queda solo dentro del modal — no llega al estudiante. Decidir: ¿sección nueva en TopicCard? ¿Se agrega a conceptos clave existentes? ¿También al quiz y explicación profunda?
+- **Ruta de 3 fases**: Apagada por defecto. El usuario no la descarta pero no le cierra — le gustaría que cada fase mostrara contenido incremental, pero el contenido actual es ya resumido. Reevaluar si tiene sentido con más contenido disponible.
+
+### Próximos pasos inmediatos
+1. Definir dónde y cómo surfacear el contenido del tutor dentro del TopicCard
+2. Implementar la inyección de contenido tutor → estudiante
+3. Evaluar si ampliar el contenido generado por sección para que la ruta de 3 fases tenga sentido
+
+### Problemas conocidos
+- Ninguno reportado
+
 ---
 
 ## Changelog

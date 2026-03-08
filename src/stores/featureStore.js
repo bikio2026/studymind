@@ -4,7 +4,7 @@ import { db } from '../lib/db'
 const DEFAULTS = {
   preReadingQuestions: true,
   bloomBadges: true,
-  learningPath: true,
+  learningPath: false,
   helpButton: true,
   defaultQuizMode: 'hybrid',   // 'self' | 'freetext' | 'hybrid'
   defaultDepth: 'completo',    // 'resumen' | 'intermedio' | 'completo'
